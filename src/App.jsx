@@ -1,51 +1,28 @@
-import { createSignal } from "solid-js";
-import logo from "./assets/logo.svg";
-import { invoke } from "@tauri-apps/api/core";
-import "./App.css";
+import { onMount, onCleanup } from "solid-js";
+import AppShell from "./components/AppShell";
+import { windowStore, addPane } from "./stores/windowStore";
 
-function App() {
-  const [greetMsg, setGreetMsg] = createSignal("");
-  const [name, setName] = createSignal("");
+export default function App() {
+  function handleKeydown(e) {
+    const isMeta = e.metaKey;
+    if (!isMeta) return;
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name: name() }));
+    if (e.key === "n" || e.key === "N") {
+      e.preventDefault();
+      addPane();
+    }
+    if (e.key === "f" || e.key === "F") {
+      e.preventDefault();
+      window.__feOpenSearch?.();
+    }
+    if (e.key === "i" || e.key === "I") {
+      e.preventDefault();
+      window.__feOpenInfo?.();
+    }
   }
 
-  return (
-    <main class="container">
-      <h1>Welcome to Tauri + Solid</h1>
+  onMount(() => window.addEventListener("keydown", handleKeydown));
+  onCleanup(() => window.removeEventListener("keydown", handleKeydown));
 
-      <div class="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" class="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://solidjs.com" target="_blank">
-          <img src={logo} class="logo solid" alt="Solid logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and Solid logos to learn more.</p>
-
-      <form
-        class="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg()}</p>
-    </main>
-  );
+  return <AppShell />;
 }
-
-export default App;
