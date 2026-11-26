@@ -1,0 +1,85 @@
+import { createMemo } from "solid-js";
+import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid } from "lucide-solid";
+import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane } from "../../stores/windowStore";
+import PathBar from "./PathBar";
+
+export default function Toolbar({ onSearch }) {
+  const activePane = createMemo(() => windowStore.panes[windowStore.activePane]);
+
+  const canGoBack = createMemo(() => {
+    const p = activePane();
+    return p && p.historyIdx > 0;
+  });
+
+  const canGoForward = createMemo(() => {
+    const p = activePane();
+    return p && p.historyIdx < p.history.length - 1;
+  });
+
+  const canRemove = createMemo(() => windowStore.panes.length > 1);
+
+  function goBack() {
+    const p = activePane();
+    if (p) navigateBack(p.id);
+  }
+
+  function goForward() {
+    const p = activePane();
+    if (p) navigateForward(p.id);
+  }
+
+  function goUp() {
+    const p = activePane();
+    if (!p) return;
+    const parts = p.path.replace(/\/$/, "").split("/");
+    if (parts.length <= 1) return;
+    parts.pop();
+    const parent = parts.join("/") || "/";
+    navigateTo(p.id, parent);
+  }
+
+  function handleRemovePane() {
+    const p = activePane();
+    if (p) removePane(p.id);
+  }
+
+  return (
+    <div
+      class="flex items-center gap-1 px-2 shrink-0"
+      style="height:40px; background:var(--panel); border-bottom:1px solid var(--border)"
+    >
+      {/* Back/Forward/Up */}
+      <button class="fe-icon-btn" disabled={!canGoBack()} onClick={goBack} title="Back">
+        <ChevronLeft size={16} />
+      </button>
+      <button class="fe-icon-btn" disabled={!canGoForward()} onClick={goForward} title="Forward">
+        <ChevronRight size={16} />
+      </button>
+      <button class="fe-icon-btn" onClick={goUp} title="Up">
+        <ChevronUp size={16} />
+      </button>
+
+      <div class="w-px h-5 mx-1" style="background:var(--border)" />
+
+      {/* Path bar stretches */}
+      <div class="flex-1 min-w-0 mx-1">
+        <PathBar />
+      </div>
+
+      <div class="w-px h-5 mx-1" style="background:var(--border)" />
+
+      {/* Search */}
+      <button class="fe-icon-btn" onClick={onSearch} title="Search (⌘F)">
+        <Search size={16} />
+      </button>
+
+      {/* Add/Remove Pane */}
+      <button class="fe-icon-btn" onClick={addPane} title="Add Pane (⌘N)">
+        <Plus size={16} />
+      </button>
+      <button class="fe-icon-btn" disabled={!canRemove()} onClick={handleRemovePane} title="Remove Pane">
+        <Minus size={16} />
+      </button>
+    </div>
+  );
+}
