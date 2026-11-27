@@ -1,21 +1,8 @@
 import { createSignal, createEffect, Show } from "solid-js";
 import { X, Copy, Archive, FolderArchive, Share } from "lucide-solid";
 import { getFileMetadata, compressToZip, uncompressArchive, shareViaImessage } from "../../lib/tauri";
+import { formatSize, formatDate } from "../../lib/format";
 import FileIcon from "../FileView/FileIcon";
-
-function formatDate(ms) {
-  if (!ms) return "—";
-  return new Date(ms).toLocaleString();
-}
-
-function formatSize(size, isDir) {
-  if (isDir) return "—";
-  const bytes = `${size.toLocaleString()} bytes`;
-  if (size < 1024) return bytes;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB (${bytes})`;
-  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB (${bytes})`;
-  return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB (${bytes})`;
-}
 
 export default function PropertiesPanel(props) {
   const [meta, setMeta] = createSignal(null);
@@ -99,11 +86,11 @@ export default function PropertiesPanel(props) {
                 </Row>
 
                 <Row label="Kind">{m().mime_type || (m().is_dir ? "Folder" : "File")}</Row>
-                <Row label="Size">{formatSize(m().size, m().is_dir)}</Row>
+                <Row label="Size">{formatSize(m().size, m().is_dir, true)}</Row>
                 <Row label="Permissions">{m().permissions}</Row>
-                <Row label="Created">{formatDate(m().created)}</Row>
-                <Row label="Modified">{formatDate(m().modified)}</Row>
-                <Row label="Accessed">{formatDate(m().accessed)}</Row>
+                <Row label="Created">{formatDate(m().created, true)}</Row>
+                <Row label="Modified">{formatDate(m().modified, true)}</Row>
+                <Row label="Accessed">{formatDate(m().accessed, true)}</Row>
               </div>
             )}
           </Show>

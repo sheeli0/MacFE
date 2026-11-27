@@ -10,7 +10,7 @@ import {
   getFileMetadata,
   getGitBranch,
 } from "../../lib/tauri";
-import { windowStore, navigateTo, setSelection } from "../../stores/windowStore";
+import { windowStore, navigateTo, navigateUp, setSelection } from "../../stores/windowStore";
 import { addRecent } from "../../stores/bookmarkStore";
 import { clipboardStore, copyFiles, cutFiles, clearClipboard, syncClipboardFromBackend } from "../../stores/clipboardStore";
 import FileList from "../FileView/FileList";
@@ -86,13 +86,6 @@ export default function FilePane(props) {
     } else {
       tauriOpenFile(file.path).catch(console.error);
     }
-  }
-
-  function goUp() {
-    const parts = pane().path.replace(/\/$/, "").split("/");
-    if (parts.length <= 1) return;
-    parts.pop();
-    navigateTo(pane().id, parts.join("/") || "/");
   }
 
   async function pasteSources(sources, isCut) {
@@ -245,7 +238,7 @@ export default function FilePane(props) {
       const f = visibleFiles()[focusIdx()];
       if (f) openEntry(f);
     } else if (e.key === "Backspace") {
-      goUp();
+      navigateUp(pane().id);
     }
   }
 

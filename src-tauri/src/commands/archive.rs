@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -11,11 +11,9 @@ fn add_path_to_zip(
 ) -> Result<(), String> {
     if path.is_dir() {
         let entries = std::fs::read_dir(path).map_err(|e| e.to_string())?;
-        // Add directory entry
         let rel = path.strip_prefix(base).map_err(|e| e.to_string())?;
-        let rel_str = rel.to_string_lossy().to_string() + "/";
-        let options = SimpleFileOptions::default()
-            .compression_method(CompressionMethod::Stored);
+        let rel_str = format!("{}/", rel.to_string_lossy());
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
         zip.add_directory(&rel_str, options)
             .map_err(|e| e.to_string())?;
         for entry in entries {
@@ -25,14 +23,11 @@ fn add_path_to_zip(
     } else {
         let rel = path.strip_prefix(base).map_err(|e| e.to_string())?;
         let rel_str = rel.to_string_lossy().to_string();
-        let options = SimpleFileOptions::default()
-            .compression_method(CompressionMethod::Deflated);
+        let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
         zip.start_file(&rel_str, options)
             .map_err(|e| e.to_string())?;
         let mut f = File::open(path).map_err(|e| e.to_string())?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-        zip.write_all(&buf).map_err(|e| e.to_string())?;
+        io::copy(&mut f, zip).map_err(|e| e.to_string())?;
     }
     Ok(())
 }
@@ -50,9 +45,7 @@ pub fn compress_to_zip(paths: Vec<String>, dest: Option<String>) -> Result<Strin
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "archive".to_string());
-        let parent = first
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let parent = first.parent().unwrap_or_else(|| Path::new("."));
         parent.join(format!("{}.zip", stem))
     };
 
@@ -61,7 +54,6 @@ pub fn compress_to_zip(paths: Vec<String>, dest: Option<String>) -> Result<Strin
 
     for path_str in &paths {
         let path = Path::new(path_str);
-        // Use parent of the item as the base so the item itself is included in the zip
         let base = path.parent().unwrap_or_else(|| Path::new("/"));
         add_path_to_zip(&mut zip, path, base)?;
     }
@@ -80,9 +72,7 @@ pub fn uncompress_archive(path: String, dest: Option<String>) -> Result<String, 
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
             .unwrap_or_else(|| "extracted".to_string());
-        let parent = zip_path
-            .parent()
-            .unwrap_or_else(|| Path::new("."));
+        let parent = zip_path.parent().unwrap_or_else(|| Path::new("."));
         parent.join(stem)
     };
 
@@ -93,18 +83,20 @@ pub fn uncompress_archive(path: String, dest: Option<String>) -> Result<String, 
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let out_path = out_dir.join(entry.name());
+        // Zip-slip protection via enclosed_name()
+        let Some(rel_path) = entry.enclosed_name() else {
+            continue;
+        };
+        let out_path = out_dir.join(rel_path);
 
-        if entry.name().ends_with('/') {
+        if entry.is_dir() {
             std::fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
         } else {
             if let Some(parent) = out_path.parent() {
                 std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
             }
             let mut out_file = File::create(&out_path).map_err(|e| e.to_string())?;
-            let mut buf = Vec::new();
-            entry.read_to_end(&mut buf).map_err(|e| e.to_string())?;
-            out_file.write_all(&buf).map_err(|e| e.to_string())?;
+            io::copy(&mut entry, &mut out_file).map_err(|e| e.to_string())?;
         }
     }
 
