@@ -9,7 +9,9 @@ import ContextMenu from "../ContextMenu/ContextMenu";
 import PropertiesPanel from "../Dialogs/PropertiesPanel";
 import ConflictDialog from "../Dialogs/ConflictDialog";
 
-export default function FilePane({ pane, isActive }) {
+export default function FilePane(props) {
+  const pane = () => props.pane;
+  const isActive = () => props.isActive;
   const [files, setFiles] = createSignal([]);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
@@ -19,10 +21,10 @@ export default function FilePane({ pane, isActive }) {
   const [focusIdx, setFocusIdx] = createSignal(-1);
 
   function refresh() {
-    if (!pane.path) return;
+    if (!pane().path) return;
     setLoading(true);
     setError(null);
-    listDir(pane.path)
+    listDir(pane().path)
       .then((entries) => {
         setFiles(entries || []);
         setLoading(false);
@@ -35,9 +37,9 @@ export default function FilePane({ pane, isActive }) {
   }
 
   createEffect(() => {
-    if (isActive) {
+    if (isActive()) {
       window.__feOpenInfo = () => {
-        const sel = pane.selected;
+        const sel = pane().selected;
         if (sel && sel.length > 0) {
           const f = files().find((x) => x.path === sel[0]);
           if (f) setPropsFile(f);
@@ -47,7 +49,7 @@ export default function FilePane({ pane, isActive }) {
   });
 
   createEffect(() => {
-    const path = pane.path;
+    const path = pane().path;
     if (!path) return;
     addRecent(path);
     refresh();
@@ -55,17 +57,17 @@ export default function FilePane({ pane, isActive }) {
 
   function openEntry(file) {
     if (file.is_dir) {
-      navigateTo(pane.id, file.path);
+      navigateTo(pane().id, file.path);
     } else {
       tauriOpenFile(file.path).catch(console.error);
     }
   }
 
   function goUp() {
-    const parts = pane.path.replace(/\/$/, "").split("/");
+    const parts = pane().path.replace(/\/$/, "").split("/");
     if (parts.length <= 1) return;
     parts.pop();
-    navigateTo(pane.id, parts.join("/") || "/");
+    navigateTo(pane().id, parts.join("/") || "/");
   }
 
   async function pasteHere() {
@@ -86,8 +88,8 @@ export default function FilePane({ pane, isActive }) {
     }
 
     if (nonConflicting.length > 0) {
-      if (isCut) await tauriMoveFiles(nonConflicting, pane.path);
-      else await tauriCopyFiles(nonConflicting, pane.path);
+      if (isCut) await tauriMoveFiles(nonConflicting, pane().path);
+      else await tauriCopyFiles(nonConflicting, pane().path);
     }
 
     let applyAllAction = null;
@@ -106,28 +108,28 @@ export default function FilePane({ pane, isActive }) {
         if (res.applyToAll) applyAllAction = action;
         if (action === "rename_incoming" && res.newName) {
           const renamed = await tauriRenameFile(item.src, res.newName);
-          if (isCut) await tauriMoveFiles([renamed], pane.path);
-          else await tauriCopyFiles([renamed], pane.path);
+          if (isCut) await tauriMoveFiles([renamed], pane().path);
+          else await tauriCopyFiles([renamed], pane().path);
           continue;
         }
         if (action === "rename_existing" && res.newName) {
           await tauriRenameFile(item.existing.path, res.newName);
-          if (isCut) await tauriMoveFiles([item.src], pane.path);
-          else await tauriCopyFiles([item.src], pane.path);
+          if (isCut) await tauriMoveFiles([item.src], pane().path);
+          else await tauriCopyFiles([item.src], pane().path);
           continue;
         }
       }
       if (action === "replace") {
-        if (isCut) await tauriMoveFiles([item.src], pane.path);
-        else await tauriCopyFiles([item.src], pane.path);
+        if (isCut) await tauriMoveFiles([item.src], pane().path);
+        else await tauriCopyFiles([item.src], pane().path);
       } else if (action === "keep_both") {
         const dot = item.incoming.name.lastIndexOf(".");
         const newName = dot > 0
           ? `${item.incoming.name.slice(0, dot)} (copy)${item.incoming.name.slice(dot)}`
           : `${item.incoming.name} (copy)`;
         const renamed = await tauriRenameFile(item.src, newName);
-        if (isCut) await tauriMoveFiles([renamed], pane.path);
-        else await tauriCopyFiles([renamed], pane.path);
+        if (isCut) await tauriMoveFiles([renamed], pane().path);
+        else await tauriCopyFiles([renamed], pane().path);
       }
     }
 
@@ -136,21 +138,21 @@ export default function FilePane({ pane, isActive }) {
   }
 
   function handleKeyDown(e) {
-    if (!isActive) return;
+    if (!isActive()) return;
     if (e.metaKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
-      setSelection(pane.id, files().map((f) => f.path));
+      setSelection(pane().id, files().map((f) => f.path));
     } else if (e.metaKey && e.key.toLowerCase() === "c") {
-      if (pane.selected?.length) { e.preventDefault(); copyFiles(pane.selected); }
+      if (pane().selected?.length) { e.preventDefault(); copyFiles(pane().selected); }
     } else if (e.metaKey && e.key.toLowerCase() === "x") {
-      if (pane.selected?.length) { e.preventDefault(); cutFiles(pane.selected); }
+      if (pane().selected?.length) { e.preventDefault(); cutFiles(pane().selected); }
     } else if (e.metaKey && e.key.toLowerCase() === "v") {
       e.preventDefault();
       pasteHere().catch(console.error);
     } else if (e.metaKey && e.key === "Backspace") {
-      if (pane.selected?.length) {
+      if (pane().selected?.length) {
         e.preventDefault();
-        tauriDeleteFiles(pane.selected).then(refresh).catch(console.error);
+        tauriDeleteFiles(pane().selected).then(refresh).catch(console.error);
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -172,7 +174,7 @@ export default function FilePane({ pane, isActive }) {
   }
 
   const cutPaths = createMemo(() => (clipboardStore.isCut ? clipboardStore.paths : []));
-  const selectedCount = createMemo(() => pane.selected?.length || 0);
+  const selectedCount = createMemo(() => pane().selected?.length || 0);
   const totalCount = createMemo(() => files().length);
 
   return (
@@ -180,7 +182,7 @@ export default function FilePane({ pane, isActive }) {
       class="flex flex-col h-full outline-none"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      style={`background:var(--bg); ${isActive ? "box-shadow: inset 0 1px 0 0 var(--accent);" : ""}`}
+      style={`background:var(--bg); ${isActive() ? "box-shadow: inset 0 1px 0 0 var(--accent);" : ""}`}
     >
       {/* File content area */}
       <div class="flex-1 overflow-hidden relative">
@@ -197,25 +199,25 @@ export default function FilePane({ pane, isActive }) {
         </Show>
         <Show when={!loading() && !error()}>
           <Show
-            when={pane.viewMode !== "grid"}
+            when={pane().viewMode !== "grid"}
             fallback={
               <FileGrid
                 files={files()}
-                selected={pane.selected}
+                selected={pane().selected}
                 cutPaths={cutPaths()}
                 onOpen={openEntry}
-                onSelect={(paths) => setSelection(pane.id, paths)}
+                onSelect={(paths) => setSelection(pane().id, paths)}
                 onContextMenu={handleContextMenu}
               />
             }
           >
             <FileList
               files={files()}
-              selected={pane.selected}
+              selected={pane().selected}
               cutPaths={cutPaths()}
               focusIdx={focusIdx()}
               onOpen={openEntry}
-              onSelect={(paths) => setSelection(pane.id, paths)}
+              onSelect={(paths) => setSelection(pane().id, paths)}
               onFocusIdx={setFocusIdx}
               onContextMenu={handleContextMenu}
             />
@@ -238,7 +240,7 @@ export default function FilePane({ pane, isActive }) {
           x={contextMenu().x}
           y={contextMenu().y}
           file={contextMenu().file}
-          pane={pane}
+          pane={pane()}
           onClose={() => { setContextMenu(null); refresh(); }}
           onOpenProps={(f) => setPropsFile(f)}
         />
