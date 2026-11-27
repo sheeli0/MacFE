@@ -11,8 +11,7 @@ pub struct SearchResult {
     pub modified: u64,
 }
 
-#[tauri::command]
-pub fn search_files(
+pub fn search_files_sync(
     root: String,
     query: String,
     max_results: Option<usize>,
@@ -82,19 +81,30 @@ pub fn search_files(
     Ok(final_results)
 }
 
+#[tauri::command]
+pub async fn search_files(
+    root: String,
+    query: String,
+    max_results: Option<usize>,
+) -> Result<Vec<SearchResult>, String> {
+    tauri::async_runtime::spawn_blocking(move || search_files_sync(root, query, max_results))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_search_files_tmp() {
-        let result = search_files("/tmp".to_string(), "".to_string(), Some(10));
+        let result = search_files_sync("/tmp".to_string(), "".to_string(), Some(10));
         assert!(result.is_ok(), "search_files failed: {:?}", result.err());
     }
 
     #[test]
     fn test_search_files_max_results() {
-        let result = search_files("/tmp".to_string(), "".to_string(), Some(3));
+        let result = search_files_sync("/tmp".to_string(), "".to_string(), Some(3));
         assert!(result.is_ok());
         assert!(result.unwrap().len() <= 3);
     }

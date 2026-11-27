@@ -151,6 +151,8 @@ export function installTauriMock() {
             truncated: false,
             size: 29,
           };
+        case "watch_dir":
+        case "unwatch_dir":
         case "create_new_window":
         case "set_clipboard":
         case "clear_clipboard":

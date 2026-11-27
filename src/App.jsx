@@ -1,6 +1,13 @@
 import { onMount, onCleanup } from "solid-js";
 import AppShell from "./components/AppShell";
-import { windowStore, addPane, toggleHiddenFiles } from "./stores/windowStore";
+import {
+  windowStore,
+  addPane,
+  toggleHiddenFiles,
+  setSearchOpen,
+  triggerInfo,
+  triggerNewFolder,
+} from "./stores/windowStore";
 import { createNewWindow } from "./lib/tauri";
 
 export default function App() {
@@ -10,7 +17,7 @@ export default function App() {
     if (e.key === "n" || e.key === "N") {
       if (e.shiftKey) {
         e.preventDefault();
-        window.__feNewFolder?.();
+        triggerNewFolder();
       } else {
         e.preventDefault();
         const active = windowStore.panes[windowStore.activePane];
@@ -24,10 +31,10 @@ export default function App() {
       toggleHiddenFiles();
     } else if (e.key === "f" || e.key === "F") {
       e.preventDefault();
-      window.__feOpenSearch?.();
+      setSearchOpen(true);
     } else if (e.key === "i" || e.key === "I") {
       e.preventDefault();
-      window.__feOpenInfo?.();
+      triggerInfo();
     }
   }
 

@@ -1,6 +1,6 @@
 import { createMemo } from "solid-js";
 import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid, AppWindow, Eye, EyeOff, FolderPlus, PanelRight } from "lucide-solid";
-import { windowStore, navigateBack, navigateForward, navigateUp, addPane, removePane, setViewMode, toggleHiddenFiles, togglePreview } from "../../stores/windowStore";
+import { windowStore, navigateBack, navigateForward, navigateUp, addPane, removePane, setViewMode, toggleHiddenFiles, togglePreview, triggerNewFolder } from "../../stores/windowStore";
 import { createNewWindow } from "../../lib/tauri";
 import PathBar from "./PathBar";
 
@@ -92,7 +92,7 @@ export default function Toolbar(props) {
       {/* New folder */}
       <button
         class="fe-icon-btn"
-        onClick={() => window.__feNewFolder?.()}
+        onClick={triggerNewFolder}
         title="New Folder (⌘⇧N)"
       >
         <FolderPlus size={15} />

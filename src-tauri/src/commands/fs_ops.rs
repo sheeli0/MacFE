@@ -131,7 +131,13 @@ pub fn get_home_dir() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
+pub async fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || list_dir_sync(path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub fn list_dir_sync(path: String) -> Result<Vec<FileEntry>, String> {
     let dir = expand_tilde(&path);
     if !dir.is_dir() {
         return Err(format!("Not a directory: {}", path));
@@ -184,7 +190,13 @@ fn copy_recursive(src: &Path, dst: &Path) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn copy_files(sources: Vec<String>, dest: String) -> Result<(), String> {
+pub async fn copy_files(sources: Vec<String>, dest: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || copy_files_sync(sources, dest))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub fn copy_files_sync(sources: Vec<String>, dest: String) -> Result<(), String> {
     let dst_dir = PathBuf::from(&dest);
     for src_str in &sources {
         let src = Path::new(src_str);
@@ -198,7 +210,13 @@ pub fn copy_files(sources: Vec<String>, dest: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn move_files(sources: Vec<String>, dest: String) -> Result<(), String> {
+pub async fn move_files(sources: Vec<String>, dest: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || move_files_sync(sources, dest))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn move_files_sync(sources: Vec<String>, dest: String) -> Result<(), String> {
     let dst_dir = PathBuf::from(&dest);
     for src_str in &sources {
         let src = Path::new(src_str);
@@ -220,7 +238,13 @@ pub fn move_files(sources: Vec<String>, dest: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn delete_files(paths: Vec<String>) -> Result<(), String> {
+pub async fn delete_files(paths: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || delete_files_sync(paths))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn delete_files_sync(paths: Vec<String>) -> Result<(), String> {
     for p in &paths {
         let path = Path::new(p);
         if trash::delete(path).is_err() {
@@ -251,7 +275,13 @@ pub fn rename_file(path: String, new_name: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
+pub async fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
+    tauri::async_runtime::spawn_blocking(move || get_file_metadata_sync(path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub fn get_file_metadata_sync(path: String) -> Result<FileMetadata, String> {
     let p = expand_tilde(&path);
     let meta = fs::metadata(&p).map_err(|e| e.to_string())?;
     let (name, is_dir, size, modified, created, extension, is_hidden, permissions) =
@@ -287,7 +317,13 @@ pub struct FilePreview {
 }
 
 #[tauri::command]
-pub fn read_file_preview(path: String, max_bytes: Option<usize>) -> Result<FilePreview, String> {
+pub async fn read_file_preview(path: String, max_bytes: Option<usize>) -> Result<FilePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || read_file_preview_sync(path, max_bytes))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+pub fn read_file_preview_sync(path: String, max_bytes: Option<usize>) -> Result<FilePreview, String> {
     let p = expand_tilde(&path);
     let meta = fs::metadata(&p).map_err(|e| e.to_string())?;
     if meta.is_dir() {
@@ -394,14 +430,13 @@ mod tests {
 
     #[test]
     fn test_list_dir_tmp() {
-        let result = list_dir("/tmp".to_string());
+        let result = list_dir_sync("/tmp".to_string());
         assert!(result.is_ok(), "list_dir /tmp failed: {:?}", result.err());
     }
 
     #[test]
     fn test_get_file_metadata_tmp() {
-        // /tmp itself is always present
-        let result = get_file_metadata("/tmp".to_string());
+        let result = get_file_metadata_sync("/tmp".to_string());
         assert!(
             result.is_ok(),
             "get_file_metadata /tmp failed: {:?}",
@@ -437,7 +472,7 @@ mod tests {
 
         let dst_dir = dir.join("sub");
         fs::create_dir_all(&dst_dir).unwrap();
-        copy_files(
+        copy_files_sync(
             vec![src.to_string_lossy().to_string()],
             dst_dir.to_string_lossy().to_string(),
         )
@@ -445,7 +480,7 @@ mod tests {
 
         let copied = dst_dir.join("hello.txt");
         assert!(copied.exists());
-        let preview = read_file_preview(copied.to_string_lossy().to_string(), None).unwrap();
+        let preview = read_file_preview_sync(copied.to_string_lossy().to_string(), None).unwrap();
         assert_eq!(preview.kind, "text");
         assert_eq!(preview.content, "hello world");
 
