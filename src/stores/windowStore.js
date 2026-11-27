@@ -3,7 +3,7 @@ import { createStore } from "solid-js/store";
 let nextId = 1;
 
 function makePane(path = "/") {
-  return { id: nextId++, path, history: [path], historyIdx: 0, selected: [] };
+  return { id: nextId++, path, history: [path], historyIdx: 0, selected: [], viewMode: "list" };
 }
 
 const [windowStore, setWindowStore] = createStore({
@@ -71,4 +71,10 @@ export function setSelection(paneId, selected) {
   const idx = windowStore.panes.findIndex((p) => p.id === paneId);
   if (idx === -1) return;
   setWindowStore("panes", idx, "selected", selected);
+}
+
+export function setViewMode(paneId, viewMode) {
+  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
+  if (idx === -1) return;
+  setWindowStore("panes", idx, "viewMode", viewMode);
 }

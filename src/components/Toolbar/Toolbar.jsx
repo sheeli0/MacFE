@@ -1,6 +1,6 @@
 import { createMemo } from "solid-js";
 import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid } from "lucide-solid";
-import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane } from "../../stores/windowStore";
+import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane, setViewMode } from "../../stores/windowStore";
 import PathBar from "./PathBar";
 
 export default function Toolbar({ onSearch }) {
@@ -65,6 +65,24 @@ export default function Toolbar({ onSearch }) {
       <div class="flex-1 min-w-0 mx-1">
         <PathBar />
       </div>
+
+      <div class="w-px h-5 mx-1" style="background:var(--border)" />
+
+      {/* View mode toggle */}
+      <button
+        class={`fe-icon-btn ${activePane()?.viewMode !== "grid" ? "active" : ""}`}
+        onClick={() => activePane() && setViewMode(activePane().id, "list")}
+        title="List View"
+      >
+        <List size={15} />
+      </button>
+      <button
+        class={`fe-icon-btn ${activePane()?.viewMode === "grid" ? "active" : ""}`}
+        onClick={() => activePane() && setViewMode(activePane().id, "grid")}
+        title="Grid View"
+      >
+        <Grid size={15} />
+      </button>
 
       <div class="w-px h-5 mx-1" style="background:var(--border)" />
 

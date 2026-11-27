@@ -1,10 +1,17 @@
 import { For, createMemo } from "solid-js";
-import { Folder, Clock, Plus, X } from "lucide-solid";
+import { Folder, Clock, Plus, X, HardDrive, Home } from "lucide-solid";
 import { bookmarkStore, addFavorite, removeFavorite, clearRecent } from "../../stores/bookmarkStore";
 import { windowStore, navigateTo } from "../../stores/windowStore";
 
+const LOCATIONS = [
+  { name: "Users", path: "/Users", icon: Home },
+  { name: "Applications", path: "/Applications", icon: Folder },
+  { name: "Macintosh HD", path: "/", icon: HardDrive },
+];
+
 export default function Sidebar() {
   const activePane = createMemo(() => windowStore.panes[windowStore.activePane]);
+  const currentPath = createMemo(() => activePane()?.path);
 
   function navigate(path) {
     const p = activePane();
@@ -20,43 +27,68 @@ export default function Sidebar() {
 
   return (
     <div
-      class="flex flex-col shrink-0 overflow-y-auto"
-      style="width:200px; background:var(--panel-alt); border-right:1px solid var(--border)"
+      class="flex flex-col shrink-0 overflow-y-auto py-2"
+      style="width:210px; background:var(--panel-alt); border-right:1px solid var(--border)"
     >
+      {/* Locations */}
+      <div class="px-3 pt-1 pb-1">
+        <span class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--muted)">
+          Locations
+        </span>
+      </div>
+      <For each={LOCATIONS}>
+        {(loc) => {
+          const Icon = loc.icon;
+          const active = () => currentPath() === loc.path;
+          return (
+            <div
+              class={`flex items-center gap-2.5 px-3 py-1.5 mx-1.5 rounded-md cursor-pointer transition-colors fe-row ${active() ? "fe-row-selected" : ""}`}
+              style="color:var(--text)"
+              onClick={() => navigate(loc.path)}
+            >
+              <Icon size={14} class="shrink-0" style="color:var(--accent)" />
+              <span class="truncate text-[13px]">{loc.name}</span>
+            </div>
+          );
+        }}
+      </For>
+
       {/* Favorites section */}
-      <div class="flex items-center justify-between px-3 pt-3 pb-1">
-        <span class="text-xs font-semibold uppercase tracking-widest" style="color:var(--muted)">
+      <div class="flex items-center justify-between px-3 pt-4 pb-1">
+        <span class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--muted)">
           Favorites
         </span>
-        <button class="fe-icon-btn w-5 h-5" onClick={handleAddFavorite} title="Add current dir">
+        <button class="fe-icon-btn w-5 h-5" onClick={handleAddFavorite} title="Pin current folder">
           <Plus size={12} />
         </button>
       </div>
       <For each={bookmarkStore.favorites}>
-        {(fav) => (
-          <div
-            class="flex items-center gap-2 px-3 py-1 cursor-pointer group transition-colors"
-            style="color:var(--text)"
-            onClick={() => navigate(fav.path)}
-            onContextMenu={(e) => { e.preventDefault(); removeFavorite(fav.path); }}
-          >
-            <Folder size={14} style="color:#d4a017; shrink-0" />
-            <span class="truncate text-xs flex-1">{fav.name}</span>
-            <button
-              class="opacity-0 group-hover:opacity-100 fe-icon-btn w-4 h-4 transition-opacity"
-              onClick={(e) => { e.stopPropagation(); removeFavorite(fav.path); }}
+        {(fav) => {
+          const active = () => currentPath() === fav.path;
+          return (
+            <div
+              class={`flex items-center gap-2.5 px-3 py-1.5 mx-1.5 rounded-md cursor-pointer group transition-colors fe-row ${active() ? "fe-row-selected" : ""}`}
+              style="color:var(--text)"
+              onClick={() => navigate(fav.path)}
+              onContextMenu={(e) => { e.preventDefault(); removeFavorite(fav.path); }}
             >
-              <X size={10} />
-            </button>
-          </div>
-        )}
+              <Folder size={14} class="shrink-0" style="color:#d4a017" />
+              <span class="truncate text-[13px] flex-1">{fav.name}</span>
+              <button
+                class="opacity-0 group-hover:opacity-100 fe-icon-btn w-4 h-4 transition-opacity"
+                onClick={(e) => { e.stopPropagation(); removeFavorite(fav.path); }}
+                title="Remove"
+              >
+                <X size={10} />
+              </button>
+            </div>
+          );
+        }}
       </For>
 
-      <div class="mt-2" />
-
       {/* Recent section */}
-      <div class="flex items-center justify-between px-3 pt-2 pb-1">
-        <span class="text-xs font-semibold uppercase tracking-widest" style="color:var(--muted)">
+      <div class="flex items-center justify-between px-3 pt-4 pb-1">
+        <span class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--muted)">
           Recent
         </span>
         <button class="fe-icon-btn w-5 h-5" onClick={clearRecent} title="Clear recent">
@@ -66,16 +98,16 @@ export default function Sidebar() {
       <For each={recentSlice()}>
         {(path) => {
           const name = path.split("/").filter(Boolean).pop() || path;
+          const active = () => currentPath() === path;
           return (
             <div
-              class="flex items-center gap-2 px-3 py-1 cursor-pointer transition-colors"
+              class={`flex items-center gap-2.5 px-3 py-1.5 mx-1.5 rounded-md cursor-pointer transition-colors fe-row ${active() ? "fe-row-selected" : ""}`}
               style="color:var(--muted)"
               onClick={() => navigate(path)}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "")}
+              title={path}
             >
-              <Clock size={13} style="shrink-0" />
-              <span class="truncate text-xs">{name}</span>
+              <Clock size={13} class="shrink-0" />
+              <span class="truncate text-[13px]">{name}</span>
             </div>
           );
         }}
