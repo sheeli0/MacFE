@@ -1,7 +1,6 @@
-import { Show, createSignal } from "solid-js";
-import { openFile, openInTerminal, compressToZip, deleteFiles, shareViaImessage } from "../../lib/tauri";
-import { copyFiles, cutFiles, clipboardStore } from "../../stores/clipboardStore";
-import { moveFiles as tauriMoveFiles } from "../../lib/tauri";
+import { Show } from "solid-js";
+import { openFile, openInTerminal, compressToZip, deleteFiles, shareViaImessage, copyFiles as tauriCopyFiles, moveFiles as tauriMoveFiles } from "../../lib/tauri";
+import { copyFiles, cutFiles, clearClipboard, clipboardStore } from "../../stores/clipboardStore";
 
 export default function ContextMenu({ x, y, file, pane, onClose, onOpenProps }) {
   const hasPaste = () => clipboardStore.paths.length > 0;
@@ -9,7 +8,12 @@ export default function ContextMenu({ x, y, file, pane, onClose, onOpenProps }) 
   async function handlePaste() {
     if (!hasPaste()) return;
     try {
-      await tauriMoveFiles(clipboardStore.paths, pane.path);
+      if (clipboardStore.isCut) {
+        await tauriMoveFiles(clipboardStore.paths, pane.path);
+        clearClipboard();
+      } else {
+        await tauriCopyFiles(clipboardStore.paths, pane.path);
+      }
     } catch (e) { console.error(e); }
     onClose();
   }
@@ -36,7 +40,7 @@ export default function ContextMenu({ x, y, file, pane, onClose, onOpenProps }) 
     box-shadow:0 8px 24px rgba(0,0,0,0.5);
   `;
 
-  const itemClass = "flex items-center px-3 py-1 text-xs cursor-pointer transition-colors gap-2";
+  const itemClass = "flex items-center px-3 py-1.5 text-xs cursor-pointer transition-colors gap-2 fe-row";
   const itemStyle = "color:var(--text)";
   const sepStyle = "height:1px; margin:4px 0; background:var(--border)";
 

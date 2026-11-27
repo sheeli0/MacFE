@@ -1,22 +1,39 @@
 import { createSignal, createEffect, createMemo, Show } from "solid-js";
-import { listDir } from "../../lib/tauri";
-import { navigateTo, navigateBack, setSelection } from "../../stores/windowStore";
+import { listDir, openFile as tauriOpenFile, copyFiles as tauriCopyFiles, moveFiles as tauriMoveFiles, deleteFiles as tauriDeleteFiles, renameFile as tauriRenameFile } from "../../lib/tauri";
+import { navigateTo, setSelection } from "../../stores/windowStore";
 import { addRecent } from "../../stores/bookmarkStore";
+import { clipboardStore, copyFiles, cutFiles, clearClipboard } from "../../stores/clipboardStore";
 import FileList from "../FileView/FileList";
 import FileGrid from "../FileView/FileGrid";
 import ContextMenu from "../ContextMenu/ContextMenu";
 import PropertiesPanel from "../Dialogs/PropertiesPanel";
+import ConflictDialog from "../Dialogs/ConflictDialog";
 
 export default function FilePane({ pane, isActive }) {
   const [files, setFiles] = createSignal([]);
   const [loading, setLoading] = createSignal(false);
   const [error, setError] = createSignal(null);
-  const [viewMode, setViewMode] = createSignal("list"); // "list" | "grid"
-  const [contextMenu, setContextMenu] = createSignal(null); // { x, y, file }
+  const [contextMenu, setContextMenu] = createSignal(null);
   const [propsFile, setPropsFile] = createSignal(null);
+  const [conflict, setConflict] = createSignal(null);
   const [focusIdx, setFocusIdx] = createSignal(-1);
 
-  // Register global info handler for active pane
+  function refresh() {
+    if (!pane.path) return;
+    setLoading(true);
+    setError(null);
+    listDir(pane.path)
+      .then((entries) => {
+        setFiles(entries || []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setFiles([]);
+        setError(String(err));
+        setLoading(false);
+      });
+  }
+
   createEffect(() => {
     if (isActive) {
       window.__feOpenInfo = () => {
@@ -32,25 +49,15 @@ export default function FilePane({ pane, isActive }) {
   createEffect(() => {
     const path = pane.path;
     if (!path) return;
-    setLoading(true);
-    setError(null);
     addRecent(path);
-    listDir(path)
-      .then((entries) => {
-        setFiles(entries || []);
-        setLoading(false);
-      })
-      .catch((err) => {
-        // Fallback: show mock data for development
-        setFiles([]);
-        setError(String(err));
-        setLoading(false);
-      });
+    refresh();
   });
 
-  function openFile(file) {
+  function openEntry(file) {
     if (file.is_dir) {
       navigateTo(pane.id, file.path);
+    } else {
+      tauriOpenFile(file.path).catch(console.error);
     }
   }
 
@@ -61,9 +68,91 @@ export default function FilePane({ pane, isActive }) {
     navigateTo(pane.id, parts.join("/") || "/");
   }
 
+  async function pasteHere() {
+    const sources = clipboardStore.paths;
+    if (!sources.length) return;
+    const isCut = clipboardStore.isCut;
+    const existingMap = new Map(files().map((f) => [f.name, f]));
+
+    const nonConflicting = [];
+    const conflicts = [];
+    for (const src of sources) {
+      const name = src.split("/").filter(Boolean).pop();
+      if (existingMap.has(name)) {
+        conflicts.push({ src, existing: existingMap.get(name), incoming: { name, path: src, size: 0, modified: 0 } });
+      } else {
+        nonConflicting.push(src);
+      }
+    }
+
+    if (nonConflicting.length > 0) {
+      if (isCut) await tauriMoveFiles(nonConflicting, pane.path);
+      else await tauriCopyFiles(nonConflicting, pane.path);
+    }
+
+    let applyAllAction = null;
+    for (const item of conflicts) {
+      let action = applyAllAction;
+      if (!action) {
+        const res = await new Promise((resolve) => {
+          setConflict({
+            existing: item.existing,
+            incoming: item.incoming,
+            resolve,
+          });
+        });
+        setConflict(null);
+        action = res.action;
+        if (res.applyToAll) applyAllAction = action;
+        if (action === "rename_incoming" && res.newName) {
+          const renamed = await tauriRenameFile(item.src, res.newName);
+          if (isCut) await tauriMoveFiles([renamed], pane.path);
+          else await tauriCopyFiles([renamed], pane.path);
+          continue;
+        }
+        if (action === "rename_existing" && res.newName) {
+          await tauriRenameFile(item.existing.path, res.newName);
+          if (isCut) await tauriMoveFiles([item.src], pane.path);
+          else await tauriCopyFiles([item.src], pane.path);
+          continue;
+        }
+      }
+      if (action === "replace") {
+        if (isCut) await tauriMoveFiles([item.src], pane.path);
+        else await tauriCopyFiles([item.src], pane.path);
+      } else if (action === "keep_both") {
+        const dot = item.incoming.name.lastIndexOf(".");
+        const newName = dot > 0
+          ? `${item.incoming.name.slice(0, dot)} (copy)${item.incoming.name.slice(dot)}`
+          : `${item.incoming.name} (copy)`;
+        const renamed = await tauriRenameFile(item.src, newName);
+        if (isCut) await tauriMoveFiles([renamed], pane.path);
+        else await tauriCopyFiles([renamed], pane.path);
+      }
+    }
+
+    if (isCut) clearClipboard();
+    refresh();
+  }
+
   function handleKeyDown(e) {
     if (!isActive) return;
-    if (e.key === "ArrowDown") {
+    if (e.metaKey && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      setSelection(pane.id, files().map((f) => f.path));
+    } else if (e.metaKey && e.key.toLowerCase() === "c") {
+      if (pane.selected?.length) { e.preventDefault(); copyFiles(pane.selected); }
+    } else if (e.metaKey && e.key.toLowerCase() === "x") {
+      if (pane.selected?.length) { e.preventDefault(); cutFiles(pane.selected); }
+    } else if (e.metaKey && e.key.toLowerCase() === "v") {
+      e.preventDefault();
+      pasteHere().catch(console.error);
+    } else if (e.metaKey && e.key === "Backspace") {
+      if (pane.selected?.length) {
+        e.preventDefault();
+        tauriDeleteFiles(pane.selected).then(refresh).catch(console.error);
+      }
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setFocusIdx((i) => Math.min(i + 1, files().length - 1));
     } else if (e.key === "ArrowUp") {
@@ -71,7 +160,7 @@ export default function FilePane({ pane, isActive }) {
       setFocusIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
       const f = files()[focusIdx()];
-      if (f) openFile(f);
+      if (f) openEntry(f);
     } else if (e.key === "Backspace") {
       goUp();
     }
@@ -82,6 +171,7 @@ export default function FilePane({ pane, isActive }) {
     setContextMenu({ x: e.clientX, y: e.clientY, file });
   }
 
+  const cutPaths = createMemo(() => (clipboardStore.isCut ? clipboardStore.paths : []));
   const selectedCount = createMemo(() => pane.selected?.length || 0);
   const totalCount = createMemo(() => files().length);
 
@@ -90,8 +180,7 @@ export default function FilePane({ pane, isActive }) {
       class="flex flex-col h-full outline-none"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      style={`background:var(--bg); ${isActive ? "outline:1px solid var(--accent);" : ""}`}
-      onClick={() => { if (!isActive) {} }}
+      style={`background:var(--bg); ${isActive ? "box-shadow: inset 0 1px 0 0 var(--accent);" : ""}`}
     >
       {/* File content area */}
       <div class="flex-1 overflow-hidden relative">
@@ -106,14 +195,15 @@ export default function FilePane({ pane, isActive }) {
             <span class="text-xs" style="color:#666">{error()}</span>
           </div>
         </Show>
-        <Show when={!loading()}>
+        <Show when={!loading() && !error()}>
           <Show
-            when={viewMode() === "list"}
+            when={pane.viewMode !== "grid"}
             fallback={
               <FileGrid
                 files={files()}
                 selected={pane.selected}
-                onOpen={openFile}
+                cutPaths={cutPaths()}
+                onOpen={openEntry}
                 onSelect={(paths) => setSelection(pane.id, paths)}
                 onContextMenu={handleContextMenu}
               />
@@ -122,8 +212,9 @@ export default function FilePane({ pane, isActive }) {
             <FileList
               files={files()}
               selected={pane.selected}
+              cutPaths={cutPaths()}
               focusIdx={focusIdx()}
-              onOpen={openFile}
+              onOpen={openEntry}
               onSelect={(paths) => setSelection(pane.id, paths)}
               onFocusIdx={setFocusIdx}
               onContextMenu={handleContextMenu}
@@ -134,8 +225,8 @@ export default function FilePane({ pane, isActive }) {
 
       {/* Status bar */}
       <div
-        class="flex items-center justify-between px-3 shrink-0 text-xs"
-        style="height:22px; border-top:1px solid var(--border); color:var(--muted); background:var(--panel)"
+        class="flex items-center justify-between px-3 shrink-0 text-[11px]"
+        style="height:24px; border-top:1px solid var(--border); color:var(--muted); background:var(--panel)"
       >
         <span>{totalCount()} items</span>
         <span>{selectedCount() > 0 ? `${selectedCount()} selected` : ""}</span>
@@ -148,7 +239,7 @@ export default function FilePane({ pane, isActive }) {
           y={contextMenu().y}
           file={contextMenu().file}
           pane={pane}
-          onClose={() => setContextMenu(null)}
+          onClose={() => { setContextMenu(null); refresh(); }}
           onOpenProps={(f) => setPropsFile(f)}
         />
       </Show>
@@ -156,6 +247,26 @@ export default function FilePane({ pane, isActive }) {
       {/* Properties panel */}
       <Show when={propsFile()}>
         <PropertiesPanel file={propsFile()} onClose={() => setPropsFile(null)} />
+      </Show>
+
+      {/* Conflict dialog */}
+      <Show when={conflict()}>
+        {(c) => {
+          const [applyAll, setApplyAll] = createSignal(false);
+          return (
+            <ConflictDialog
+              existing={c().existing}
+              incoming={c().incoming}
+              applyToAll={applyAll()}
+              onApplyToAll={setApplyAll}
+              onReplace={() => c().resolve({ action: "replace", applyToAll: applyAll() })}
+              onKeepBoth={() => c().resolve({ action: "keep_both", applyToAll: applyAll() })}
+              onRenameIncoming={(newName) => c().resolve({ action: "rename_incoming", newName, applyToAll: applyAll() })}
+              onRenameExisting={(newName) => c().resolve({ action: "rename_existing", newName, applyToAll: applyAll() })}
+              onSkip={() => c().resolve({ action: "skip", applyToAll: applyAll() })}
+            />
+          );
+        }}
       </Show>
     </div>
   );
