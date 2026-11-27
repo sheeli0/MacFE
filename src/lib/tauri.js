@@ -20,3 +20,5 @@ export const getHomeDir = () => invoke("get_home_dir");
 export const createNewWindow = (path = null) => invoke("create_new_window", { path });
 export const readFilePreview = (path, maxBytes = 65536) => invoke("read_file_preview", { path, maxBytes });
 export const getGitBranch = (path) => invoke("get_git_branch", { path });
+export const watchDir = (paneId, path) => invoke("watch_dir", { paneId: String(paneId), path });
+export const unwatchDir = (paneId) => invoke("unwatch_dir", { paneId: String(paneId) });

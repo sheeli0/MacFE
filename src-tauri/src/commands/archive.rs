@@ -33,7 +33,13 @@ fn add_path_to_zip(
 }
 
 #[tauri::command]
-pub fn compress_to_zip(paths: Vec<String>, dest: Option<String>) -> Result<String, String> {
+pub async fn compress_to_zip(paths: Vec<String>, dest: Option<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || compress_to_zip_sync(paths, dest))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn compress_to_zip_sync(paths: Vec<String>, dest: Option<String>) -> Result<String, String> {
     if paths.is_empty() {
         return Err("No paths provided".to_string());
     }
@@ -63,7 +69,13 @@ pub fn compress_to_zip(paths: Vec<String>, dest: Option<String>) -> Result<Strin
 }
 
 #[tauri::command]
-pub fn uncompress_archive(path: String, dest: Option<String>) -> Result<String, String> {
+pub async fn uncompress_archive(path: String, dest: Option<String>) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || uncompress_archive_sync(path, dest))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn uncompress_archive_sync(path: String, dest: Option<String>) -> Result<String, String> {
     let zip_path = Path::new(&path);
     let out_dir = if let Some(d) = dest {
         PathBuf::from(d)

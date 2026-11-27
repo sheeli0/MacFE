@@ -1,18 +1,26 @@
-import { createSignal, createEffect, createMemo, Show } from "solid-js";
+import { createSignal, createEffect, createMemo, on, onCleanup, Show } from "solid-js";
+import { listen } from "@tauri-apps/api/event";
 import {
   listDir,
   openFile as tauriOpenFile,
-  copyFiles as tauriCopyFiles,
-  moveFiles as tauriMoveFiles,
   deleteFiles as tauriDeleteFiles,
   renameFile as tauriRenameFile,
   createDir as tauriCreateDir,
-  getFileMetadata,
   getGitBranch,
+  watchDir,
+  unwatchDir,
 } from "../../lib/tauri";
-import { windowStore, navigateTo, navigateUp, setSelection } from "../../stores/windowStore";
+import {
+  windowStore,
+  navigateTo,
+  navigateUp,
+  setSelection,
+  infoTrigger,
+  newFolderTrigger,
+} from "../../stores/windowStore";
 import { addRecent } from "../../stores/bookmarkStore";
 import { clipboardStore, copyFiles, cutFiles, clearClipboard, syncClipboardFromBackend } from "../../stores/clipboardStore";
+import { pasteWithConflicts } from "../../lib/pasteWithConflicts";
 import FileList from "../FileView/FileList";
 import FileGrid from "../FileView/FileGrid";
 import ContextMenu from "../ContextMenu/ContextMenu";
@@ -52,27 +60,43 @@ export default function FilePane(props) {
       });
   }
 
-  createEffect(() => {
-    if (isActive()) {
-      window.__feOpenInfo = () => {
-        const sel = pane().selected;
-        if (sel && sel.length > 0) {
-          const f = files().find((x) => x.path === sel[0]);
-          if (f) setPropsFile(f);
-        }
-      };
-      window.__feNewFolder = () => {
-        setNewFolderName("Untitled Folder");
-        setCreatingFolder(true);
-      };
+  // React to global Cmd+I (Properties) and Cmd+Shift+N (New Folder) signals when active
+  createEffect(on(infoTrigger, (n) => {
+    if (n === 0 || !isActive()) return;
+    const sel = pane().selected;
+    if (sel && sel.length > 0) {
+      const f = files().find((x) => x.path === sel[0]);
+      if (f) setPropsFile(f);
     }
-  });
+  }));
 
+  createEffect(on(newFolderTrigger, (n) => {
+    if (n === 0 || !isActive()) return;
+    setNewFolderName("Untitled Folder");
+    setCreatingFolder(true);
+  }));
+
+  // Load directory and register FSEvents watcher on path change
   createEffect(() => {
     const path = pane().path;
+    const id = pane().id;
     if (!path) return;
     addRecent(path);
     refresh();
+    watchDir(id, path).catch(() => {});
+  });
+
+  // Auto-refresh when FSEvents notifies that the current directory changed
+  let unlisten;
+  listen("dir-changed", (event) => {
+    if (event.payload === pane().path) {
+      refresh();
+    }
+  }).then((fn) => { unlisten = fn; }).catch(() => {});
+
+  onCleanup(() => {
+    unlisten?.();
+    unwatchDir(pane().id).catch(() => {});
   });
 
   const visibleFiles = createMemo(() => {
@@ -89,71 +113,16 @@ export default function FilePane(props) {
   }
 
   async function pasteSources(sources, isCut) {
-    if (!sources.length) return;
-    const existingMap = new Map(files().map((f) => [f.name, f]));
-
-    const nonConflicting = [];
-    const conflicts = [];
-    for (const src of sources) {
-      const name = src.split("/").filter(Boolean).pop();
-      if (existingMap.has(name)) {
-        let incomingMeta = { name, path: src, size: 0, modified: 0 };
-        try {
-          const m = await getFileMetadata(src);
-          incomingMeta = { name: m.name, path: m.path, size: m.size, modified: m.modified };
-        } catch {}
-        conflicts.push({ src, existing: existingMap.get(name), incoming: incomingMeta });
-      } else {
-        nonConflicting.push(src);
-      }
-    }
-
-    if (nonConflicting.length > 0) {
-      if (isCut) await tauriMoveFiles(nonConflicting, pane().path);
-      else await tauriCopyFiles(nonConflicting, pane().path);
-    }
-
-    let applyAllAction = null;
-    for (const item of conflicts) {
-      let action = applyAllAction;
-      if (!action) {
-        const res = await new Promise((resolve) => {
-          setConflict({
-            existing: item.existing,
-            incoming: item.incoming,
-            resolve,
-          });
-        });
-        setConflict(null);
-        action = res.action;
-        if (res.applyToAll) applyAllAction = action;
-        if (action === "rename_incoming" && res.newName) {
-          const renamed = await tauriRenameFile(item.src, res.newName);
-          if (isCut) await tauriMoveFiles([renamed], pane().path);
-          else await tauriCopyFiles([renamed], pane().path);
-          continue;
-        }
-        if (action === "rename_existing" && res.newName) {
-          await tauriRenameFile(item.existing.path, res.newName);
-          if (isCut) await tauriMoveFiles([item.src], pane().path);
-          else await tauriCopyFiles([item.src], pane().path);
-          continue;
-        }
-      }
-      if (action === "replace") {
-        if (isCut) await tauriMoveFiles([item.src], pane().path);
-        else await tauriCopyFiles([item.src], pane().path);
-      } else if (action === "keep_both") {
-        const dot = item.incoming.name.lastIndexOf(".");
-        const newName = dot > 0
-          ? `${item.incoming.name.slice(0, dot)} (copy)${item.incoming.name.slice(dot)}`
-          : `${item.incoming.name} (copy)`;
-        const renamed = await tauriRenameFile(item.src, newName);
-        if (isCut) await tauriMoveFiles([renamed], pane().path);
-        else await tauriCopyFiles([renamed], pane().path);
-      }
-    }
-
+    await pasteWithConflicts({
+      sources,
+      isCut,
+      destPath: pane().path,
+      existingFiles: files(),
+      onConflict: (existing, incoming) =>
+        new Promise((resolve) => {
+          setConflict({ existing, incoming, resolve });
+        }).finally(() => setConflict(null)),
+    });
     if (isCut) clearClipboard();
     refresh();
   }

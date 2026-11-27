@@ -1,4 +1,5 @@
 import { createStore } from "solid-js/store";
+import { createSignal } from "solid-js";
 
 let nextId = 1;
 
@@ -24,6 +25,18 @@ const [windowStore, setWindowStore] = createStore({
 
 export { windowStore };
 
+export const [searchOpen, setSearchOpen] = createSignal(false);
+export const [infoTrigger, setInfoTrigger] = createSignal(0);
+export const [newFolderTrigger, setNewFolderTrigger] = createSignal(0);
+
+export const triggerInfo = () => setInfoTrigger((n) => n + 1);
+export const triggerNewFolder = () => setNewFolderTrigger((n) => n + 1);
+
+function withPane(paneId, fn) {
+  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
+  if (idx !== -1) fn(idx, windowStore.panes[idx]);
+}
+
 export function togglePreview() {
   setWindowStore("previewOpen", (v) => !v);
 }
@@ -41,68 +54,57 @@ export function addPane() {
 
 export function removePane(id) {
   if (windowStore.panes.length <= 1) return;
-  const idx = windowStore.panes.findIndex((p) => p.id === id);
-  if (idx === -1) return;
-  setWindowStore("panes", (p) => p.filter((pane) => pane.id !== id));
-  const newActive = Math.min(windowStore.activePane, windowStore.panes.length - 1);
-  setWindowStore("activePane", newActive);
+  withPane(id, () => {
+    setWindowStore("panes", (p) => p.filter((pane) => pane.id !== id));
+    setWindowStore("activePane", Math.min(windowStore.activePane, windowStore.panes.length - 1));
+  });
 }
 
 export function setActivePaneId(id) {
-  const idx = windowStore.panes.findIndex((p) => p.id === id);
-  if (idx !== -1) setWindowStore("activePane", idx);
+  withPane(id, (idx) => setWindowStore("activePane", idx));
 }
 
 export function navigateTo(paneId, path) {
-  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
-  if (idx === -1) return;
-  const pane = windowStore.panes[idx];
-  const newHistory = pane.history.slice(0, pane.historyIdx + 1).concat(path);
-  setWindowStore("panes", idx, "path", path);
-  setWindowStore("panes", idx, "history", newHistory);
-  setWindowStore("panes", idx, "historyIdx", newHistory.length - 1);
-  setWindowStore("panes", idx, "selected", []);
+  withPane(paneId, (idx, pane) => {
+    const newHistory = pane.history.slice(0, pane.historyIdx + 1).concat(path);
+    setWindowStore("panes", idx, {
+      path,
+      history: newHistory,
+      historyIdx: newHistory.length - 1,
+      selected: [],
+    });
+  });
 }
 
 export function navigateBack(paneId) {
-  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
-  if (idx === -1) return;
-  const pane = windowStore.panes[idx];
-  if (pane.historyIdx <= 0) return;
-  const newIdx = pane.historyIdx - 1;
-  setWindowStore("panes", idx, "historyIdx", newIdx);
-  setWindowStore("panes", idx, "path", pane.history[newIdx]);
-  setWindowStore("panes", idx, "selected", []);
+  withPane(paneId, (idx, pane) => {
+    if (pane.historyIdx <= 0) return;
+    const newIdx = pane.historyIdx - 1;
+    setWindowStore("panes", idx, { historyIdx: newIdx, path: pane.history[newIdx], selected: [] });
+  });
 }
 
 export function navigateForward(paneId) {
-  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
-  if (idx === -1) return;
-  const pane = windowStore.panes[idx];
-  if (pane.historyIdx >= pane.history.length - 1) return;
-  const newIdx = pane.historyIdx + 1;
-  setWindowStore("panes", idx, "historyIdx", newIdx);
-  setWindowStore("panes", idx, "path", pane.history[newIdx]);
-  setWindowStore("panes", idx, "selected", []);
+  withPane(paneId, (idx, pane) => {
+    if (pane.historyIdx >= pane.history.length - 1) return;
+    const newIdx = pane.historyIdx + 1;
+    setWindowStore("panes", idx, { historyIdx: newIdx, path: pane.history[newIdx], selected: [] });
+  });
 }
 
 export function navigateUp(paneId) {
-  const pane = windowStore.panes.find((p) => p.id === paneId);
-  if (!pane) return;
-  const parts = pane.path.replace(/\/$/, "").split("/");
-  if (parts.length <= 1) return;
-  parts.pop();
-  navigateTo(paneId, parts.join("/") || "/");
+  withPane(paneId, (_idx, pane) => {
+    const parts = pane.path.replace(/\/$/, "").split("/");
+    if (parts.length <= 1) return;
+    parts.pop();
+    navigateTo(paneId, parts.join("/") || "/");
+  });
 }
 
 export function setSelection(paneId, selected) {
-  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
-  if (idx === -1) return;
-  setWindowStore("panes", idx, "selected", selected);
+  withPane(paneId, (idx) => setWindowStore("panes", idx, "selected", selected));
 }
 
 export function setViewMode(paneId, viewMode) {
-  const idx = windowStore.panes.findIndex((p) => p.id === paneId);
-  if (idx === -1) return;
-  setWindowStore("panes", idx, "viewMode", viewMode);
+  withPane(paneId, (idx) => setWindowStore("panes", idx, "viewMode", viewMode));
 }

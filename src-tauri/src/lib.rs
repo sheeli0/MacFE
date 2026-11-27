@@ -1,5 +1,6 @@
 mod commands;
 mod state;
+mod watcher;
 
 use commands::archive::{compress_to_zip, uncompress_archive};
 use commands::fs_ops::{
@@ -9,6 +10,7 @@ use commands::fs_ops::{
 use commands::search::search_files;
 use commands::share::share_via_imessage;
 use state::{clear_clipboard, get_clipboard, set_clipboard, ClipboardState};
+use watcher::{unwatch_dir, watch_dir, WatcherState};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, WebviewUrl, WebviewWindowBuilder};
@@ -49,6 +51,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(ClipboardState::default()))
+        .manage(WatcherState::default())
         .invoke_handler(tauri::generate_handler![
             list_dir,
             copy_files,
@@ -61,6 +64,8 @@ pub fn run() {
             create_new_window,
             read_file_preview,
             get_git_branch,
+            watch_dir,
+            unwatch_dir,
             set_clipboard,
             get_clipboard,
             clear_clipboard,
