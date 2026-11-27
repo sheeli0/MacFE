@@ -86,6 +86,15 @@ export function navigateForward(paneId) {
   setWindowStore("panes", idx, "selected", []);
 }
 
+export function navigateUp(paneId) {
+  const pane = windowStore.panes.find((p) => p.id === paneId);
+  if (!pane) return;
+  const parts = pane.path.replace(/\/$/, "").split("/");
+  if (parts.length <= 1) return;
+  parts.pop();
+  navigateTo(paneId, parts.join("/") || "/");
+}
+
 export function setSelection(paneId, selected) {
   const idx = windowStore.panes.findIndex((p) => p.id === paneId);
   if (idx === -1) return;

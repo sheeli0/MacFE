@@ -72,28 +72,39 @@ fn human_size(size: u64) -> String {
     }
 }
 
-fn entry_from_path(p: &Path) -> Result<FileEntry, String> {
-    let meta = fs::metadata(p).map_err(|e| e.to_string())?;
+fn extract_common_meta(
+    p: &Path,
+    meta: &fs::Metadata,
+) -> (String, bool, u64, u64, u64, Option<String>, bool, String) {
     let name = p
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
-    let extension = if meta.is_dir() {
+    let is_dir = meta.is_dir();
+    let extension = if is_dir {
         None
     } else {
         p.extension().map(|e| e.to_string_lossy().to_string())
     };
     let is_hidden = name.starts_with('.');
-    let mode = meta.permissions().mode();
-    let permissions = mode_to_string(mode & 0o777);
+    let permissions = mode_to_string(meta.permissions().mode() & 0o777);
+    let size = if is_dir { 0 } else { meta.len() };
     let modified = meta.modified().map(system_time_to_millis).unwrap_or(0);
     let created = meta.created().map(system_time_to_millis).unwrap_or(0);
+    (name, is_dir, size, modified, created, extension, is_hidden, permissions)
+}
+
+fn entry_from_dir_entry(entry: fs::DirEntry) -> Result<FileEntry, String> {
+    let p = entry.path();
+    let meta = entry.metadata().map_err(|e| e.to_string())?;
+    let (name, is_dir, size, modified, created, extension, is_hidden, permissions) =
+        extract_common_meta(&p, &meta);
 
     Ok(FileEntry {
         name,
         path: p.to_string_lossy().to_string(),
-        is_dir: meta.is_dir(),
-        size: if meta.is_dir() { 0 } else { meta.len() },
+        is_dir,
+        size,
         modified,
         created,
         extension,
@@ -125,15 +136,11 @@ pub fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
     if !dir.is_dir() {
         return Err(format!("Not a directory: {}", path));
     }
-    let mut entries = Vec::new();
     let read_dir = fs::read_dir(dir).map_err(|e| e.to_string())?;
-    for entry in read_dir {
-        match entry {
-            Ok(e) => match entry_from_path(&e.path()) {
-                Ok(fe) => entries.push(fe),
-                Err(_) => {}
-            },
-            Err(_) => {}
+    let mut entries = Vec::with_capacity(64);
+    for entry in read_dir.flatten() {
+        if let Ok(fe) = entry_from_dir_entry(entry) {
+            entries.push(fe);
         }
     }
     Ok(entries)
@@ -245,35 +252,22 @@ pub fn rename_file(path: String, new_name: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
-    let p = Path::new(&path);
-    let meta = fs::metadata(p).map_err(|e| e.to_string())?;
-    let name = p
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let extension = if meta.is_dir() {
-        None
-    } else {
-        p.extension().map(|e| e.to_string_lossy().to_string())
-    };
-    let is_hidden = name.starts_with('.');
-    let mode = meta.permissions().mode();
-    let permissions = mode_to_string(mode & 0o777);
-    let size = if meta.is_dir() { 0 } else { meta.len() };
+    let p = expand_tilde(&path);
+    let meta = fs::metadata(&p).map_err(|e| e.to_string())?;
+    let (name, is_dir, size, modified, created, extension, is_hidden, permissions) =
+        extract_common_meta(&p, &meta);
     let size_human = human_size(size);
-    let created = meta.created().map(system_time_to_millis).unwrap_or(0);
-    let modified = meta.modified().map(system_time_to_millis).unwrap_or(0);
     let accessed = meta.accessed().map(system_time_to_millis).unwrap_or(0);
     let mime_type = extension
         .as_deref()
         .map(|ext| mime_guess::from_ext(ext).first_or_octet_stream().to_string());
 
     Ok(FileMetadata {
-        path,
+        path: p.to_string_lossy().to_string(),
         name,
         size,
         size_human,
-        is_dir: meta.is_dir(),
+        is_dir,
         is_hidden,
         extension,
         mime_type,
@@ -431,5 +425,30 @@ mod tests {
         assert_eq!(human_size(1023), "1023 B");
         assert_eq!(human_size(1024), "1.0 KB");
         assert_eq!(human_size(1024 * 1024), "1.0 MB");
+    }
+
+    #[test]
+    fn test_copy_and_preview() {
+        let dir = std::env::temp_dir().join("macfe_unit_test");
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("hello.txt");
+        fs::write(&src, "hello world").unwrap();
+
+        let dst_dir = dir.join("sub");
+        fs::create_dir_all(&dst_dir).unwrap();
+        copy_files(
+            vec![src.to_string_lossy().to_string()],
+            dst_dir.to_string_lossy().to_string(),
+        )
+        .unwrap();
+
+        let copied = dst_dir.join("hello.txt");
+        assert!(copied.exists());
+        let preview = read_file_preview(copied.to_string_lossy().to_string(), None).unwrap();
+        assert_eq!(preview.kind, "text");
+        assert_eq!(preview.content, "hello world");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }

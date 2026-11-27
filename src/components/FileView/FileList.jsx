@@ -1,25 +1,13 @@
 import { For, Show, createMemo, createSignal } from "solid-js";
 import FileIcon from "./FileIcon";
 import { useMarqueeSelect } from "../../lib/useMarqueeSelect";
+import { formatSize, formatDate } from "../../lib/format";
 
 const COLUMNS = [
   { key: "name", label: "Name", flex: 3 },
   { key: "size", label: "Size", flex: 1 },
   { key: "modified", label: "Modified", flex: 2 },
 ];
-
-function formatSize(size, isDir) {
-  if (isDir) return "—";
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  if (size < 1024 * 1024 * 1024) return `${(size / 1024 / 1024).toFixed(1)} MB`;
-  return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
-}
-
-function formatDate(ms) {
-  if (!ms) return "—";
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
 
 export default function FileList(props) {
   const [sortKey, setSortKey] = createSignal("name");
