@@ -3,8 +3,8 @@ mod state;
 
 use commands::archive::{compress_to_zip, uncompress_archive};
 use commands::fs_ops::{
-    copy_files, create_dir, delete_files, get_file_metadata, get_home_dir, list_dir, move_files,
-    open_file, open_in_terminal, rename_file,
+    copy_files, create_dir, delete_files, get_file_metadata, get_git_branch, get_home_dir,
+    list_dir, move_files, open_file, open_in_terminal, read_file_preview, rename_file,
 };
 use commands::search::search_files;
 use commands::share::share_via_imessage;
@@ -59,6 +59,8 @@ pub fn run() {
             get_file_metadata,
             get_home_dir,
             create_new_window,
+            read_file_preview,
+            get_git_branch,
             set_clipboard,
             get_clipboard,
             clear_clipboard,

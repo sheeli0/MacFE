@@ -1,6 +1,6 @@
 import { createMemo } from "solid-js";
-import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid, AppWindow, Eye, EyeOff, FolderPlus } from "lucide-solid";
-import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane, setViewMode, toggleHiddenFiles } from "../../stores/windowStore";
+import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid, AppWindow, Eye, EyeOff, FolderPlus, PanelRight } from "lucide-solid";
+import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane, setViewMode, toggleHiddenFiles, togglePreview } from "../../stores/windowStore";
 import { createNewWindow } from "../../lib/tauri";
 import PathBar from "./PathBar";
 
@@ -125,6 +125,15 @@ export default function Toolbar(props) {
         title="New Window (⌘N)"
       >
         <AppWindow size={15} />
+      </button>
+
+      {/* Preview Pane Toggle */}
+      <button
+        class={`fe-icon-btn ${windowStore.previewOpen ? "active" : ""}`}
+        onClick={togglePreview}
+        title="Toggle Preview Pane"
+      >
+        <PanelRight size={15} />
       </button>
     </div>
   );

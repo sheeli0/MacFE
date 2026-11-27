@@ -19,9 +19,14 @@ const [windowStore, setWindowStore] = createStore({
   panes: [makePane(getInitialPath())],
   activePane: 0,
   showHidden: false,
+  previewOpen: false,
 });
 
 export { windowStore };
+
+export function togglePreview() {
+  setWindowStore("previewOpen", (v) => !v);
+}
 
 export function toggleHiddenFiles() {
   setWindowStore("showHidden", (v) => !v);

@@ -142,6 +142,15 @@ export function installTauriMock() {
           fsTree[args.path] = [];
           return null;
         }
+        case "get_git_branch":
+          return args.path === "/Users" ? "main" : null;
+        case "read_file_preview":
+          return {
+            kind: "text",
+            content: "Hello from sandboxed preview!",
+            truncated: false,
+            size: 29,
+          };
         case "create_new_window":
         case "set_clipboard":
         case "clear_clipboard":

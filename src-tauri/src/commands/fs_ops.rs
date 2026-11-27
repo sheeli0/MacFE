@@ -1,5 +1,9 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
+use std::ffi::CString;
 use std::fs;
+use std::io::Read;
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -135,6 +139,22 @@ pub fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
     Ok(entries)
 }
 
+#[cfg(target_os = "macos")]
+fn apfs_clone_file(src: &Path, dst: &Path) -> bool {
+    let Ok(c_src) = CString::new(src.as_os_str().as_bytes()) else {
+        return false;
+    };
+    let Ok(c_dst) = CString::new(dst.as_os_str().as_bytes()) else {
+        return false;
+    };
+    // Remove destination if it already exists before clonefile
+    let _ = fs::remove_file(dst);
+    unsafe extern "C" {
+        fn clonefile(src: *const libc::c_char, dst: *const libc::c_char, flags: u32) -> libc::c_int;
+    }
+    unsafe { clonefile(c_src.as_ptr(), c_dst.as_ptr(), 0) == 0 }
+}
+
 fn copy_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     if src.is_dir() {
         fs::create_dir_all(dst).map_err(|e| e.to_string())?;
@@ -146,6 +166,10 @@ fn copy_recursive(src: &Path, dst: &Path) -> Result<(), String> {
     } else {
         if let Some(parent) = dst.parent() {
             fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        #[cfg(target_os = "macos")]
+        if apfs_clone_file(src, dst) {
+            return Ok(());
         }
         fs::copy(src, dst).map_err(|e| e.to_string())?;
     }
@@ -258,6 +282,98 @@ pub fn get_file_metadata(path: String) -> Result<FileMetadata, String> {
         modified,
         accessed,
     })
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FilePreview {
+    pub kind: String, // "text" | "image" | "binary"
+    pub content: String,
+    pub truncated: bool,
+    pub size: u64,
+}
+
+#[tauri::command]
+pub fn read_file_preview(path: String, max_bytes: Option<usize>) -> Result<FilePreview, String> {
+    let p = expand_tilde(&path);
+    let meta = fs::metadata(&p).map_err(|e| e.to_string())?;
+    if meta.is_dir() {
+        return Err("Cannot preview directory".to_string());
+    }
+    let size = meta.len();
+    let ext = p
+        .extension()
+        .map(|e| e.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let is_image = matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico"
+    );
+    if is_image {
+        if size > 5 * 1024 * 1024 {
+            return Ok(FilePreview {
+                kind: "binary".to_string(),
+                content: "Image too large to preview (> 5 MB)".to_string(),
+                truncated: true,
+                size,
+            });
+        }
+        let bytes = fs::read(&p).map_err(|e| e.to_string())?;
+        let mime = mime_guess::from_ext(&ext)
+            .first_or_octet_stream()
+            .to_string();
+        return Ok(FilePreview {
+            kind: "image".to_string(),
+            content: format!("data:{};base64,{}", mime, BASE64.encode(&bytes)),
+            truncated: false,
+            size,
+        });
+    }
+
+    let limit = max_bytes.unwrap_or(65_536);
+    let mut f = fs::File::open(&p).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; limit.min(size as usize)];
+    let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+    buf.truncate(n);
+
+    if buf.contains(&0) {
+        return Ok(FilePreview {
+            kind: "binary".to_string(),
+            content: "Binary file".to_string(),
+            truncated: size > n as u64,
+            size,
+        });
+    }
+
+    let text = String::from_utf8_lossy(&buf).to_string();
+    Ok(FilePreview {
+        kind: "text".to_string(),
+        content: text,
+        truncated: size > n as u64,
+        size,
+    })
+}
+
+#[tauri::command]
+pub fn get_git_branch(path: String) -> Option<String> {
+    let mut cur = expand_tilde(&path);
+    if cur.is_file() {
+        cur = cur.parent()?.to_path_buf();
+    }
+    loop {
+        let head = cur.join(".git").join("HEAD");
+        if head.is_file() {
+            let content = fs::read_to_string(head).ok()?;
+            let trimmed = content.trim();
+            if let Some(branch) = trimmed.strip_prefix("ref: refs/heads/") {
+                return Some(branch.to_string());
+            }
+            return Some(trimmed.chars().take(7).collect());
+        }
+        if !cur.pop() {
+            return None;
+        }
+    }
 }
 
 #[tauri::command]
