@@ -32,7 +32,6 @@ export function useMarqueeSelect({ getContainer, getSelected, onSelect }) {
       const height = Math.abs(curY - startY);
       setMarquee({ left, top, width, height });
 
-      // Viewport rect for intersection testing
       const vLeft = Math.min(startClientX, curClientX);
       const vRight = Math.max(startClientX, curClientX);
       const vTop = Math.min(startClientY, curClientY);
@@ -71,6 +70,7 @@ export function useMarqueeSelect({ getContainer, getSelected, onSelect }) {
       window.removeEventListener("mouseup", onMouseUp);
       if (dragging) {
         suppressNextClick = true;
+        setTimeout(() => { suppressNextClick = false; }, 0);
         setMarquee(null);
       } else if (!upEvt.target.closest?.("[data-file-path]") && !additive) {
         onSelect?.([]);

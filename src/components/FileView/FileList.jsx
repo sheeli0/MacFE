@@ -21,7 +21,7 @@ function formatDate(ms) {
   return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-export default function FileList({ files, selected = [], cutPaths = [], focusIdx, onOpen, onSelect, onFocusIdx, onContextMenu }) {
+export default function FileList(props) {
   const [sortKey, setSortKey] = createSignal("name");
   const [sortAsc, setSortAsc] = createSignal(true);
   let listRef;
@@ -29,7 +29,7 @@ export default function FileList({ files, selected = [], cutPaths = [], focusIdx
   const sorted = createMemo(() => {
     const key = sortKey();
     const asc = sortAsc();
-    return [...files].sort((a, b) => {
+    return [...(props.files || [])].sort((a, b) => {
       if (a.is_dir !== b.is_dir) return a.is_dir ? -1 : 1;
       let av = a[key], bv = b[key];
       if (key === "name") { av = av.toLowerCase(); bv = bv.toLowerCase(); }
@@ -41,8 +41,8 @@ export default function FileList({ files, selected = [], cutPaths = [], focusIdx
 
   const { marquee, onMouseDown, consumeSuppressClick } = useMarqueeSelect({
     getContainer: () => listRef,
-    getSelected: () => selected,
-    onSelect,
+    getSelected: () => props.selected || [],
+    onSelect: (paths) => props.onSelect?.(paths),
   });
 
   function toggleSort(key) {
@@ -52,19 +52,20 @@ export default function FileList({ files, selected = [], cutPaths = [], focusIdx
 
   function handleClick(e, file, idx) {
     if (consumeSuppressClick()) return;
-    if (e.shiftKey && focusIdx >= 0) {
+    const selected = props.selected || [];
+    if (e.shiftKey && props.focusIdx >= 0) {
       const list = sorted();
-      const start = Math.min(focusIdx, idx);
-      const end = Math.max(focusIdx, idx);
-      onSelect?.(list.slice(start, end + 1).map(f => f.path));
+      const start = Math.min(props.focusIdx, idx);
+      const end = Math.max(props.focusIdx, idx);
+      props.onSelect?.(list.slice(start, end + 1).map(f => f.path));
       return;
     }
-    onFocusIdx?.(idx);
+    props.onFocusIdx?.(idx);
     if (e.metaKey) {
       const already = selected.includes(file.path);
-      onSelect?.(already ? selected.filter(p => p !== file.path) : [...selected, file.path]);
+      props.onSelect?.(already ? selected.filter(p => p !== file.path) : [...selected, file.path]);
     } else {
-      onSelect?.([file.path]);
+      props.onSelect?.([file.path]);
     }
   }
 
@@ -95,17 +96,17 @@ export default function FileList({ files, selected = [], cutPaths = [], focusIdx
       >
         <For each={sorted()}>
           {(file, i) => {
-            const isSelected = () => selected.includes(file.path);
-            const isFocused = () => focusIdx === i();
-            const isCut = () => cutPaths.includes(file.path);
+            const isSelected = () => (props.selected || []).includes(file.path);
+            const isFocused = () => props.focusIdx === i();
+            const isCut = () => (props.cutPaths || []).includes(file.path);
             return (
               <div
                 data-file-path={file.path}
                 class={`flex items-center cursor-pointer transition-colors text-[13px] mx-1 rounded px-0.5 fe-row ${isSelected() ? "fe-row-selected" : ""}`}
-                style={`height:28px; background:${isFocused() && !isSelected() ? "var(--panel)" : "transparent"}; color:var(--text); opacity:${isCut() ? 0.45 : 1}`}
+                style={`height:28px; ${isFocused() && !isSelected() ? "background:var(--panel);" : ""} color:var(--text); opacity:${isCut() ? 0.45 : 1}`}
                 onClick={(e) => handleClick(e, file, i())}
-                onDblClick={() => onOpen?.(file)}
-                onContextMenu={(e) => onContextMenu?.(e, file)}
+                onDblClick={() => props.onOpen?.(file)}
+                onContextMenu={(e) => props.onContextMenu?.(e, file)}
               >
                 <div class="flex items-center gap-2.5 px-2 min-w-0" style="flex:3">
                   <FileIcon file={file} size={15} />
