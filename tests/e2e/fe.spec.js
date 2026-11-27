@@ -76,7 +76,7 @@ test("editable PathBar navigates on Enter", async ({ page }) => {
 
 test("N-pane add and remove works", async ({ page }) => {
   await expect(page.getByText("5 items")).toHaveCount(1);
-  await page.getByTitle("Add Pane (⌘N)").click();
+  await page.getByTitle("Add Pane (⌘⇧P)").click();
   await expect(page.getByText("5 items")).toHaveCount(2);
   await page.getByTitle("Remove Pane").click();
   await expect(page.getByText("5 items")).toHaveCount(1);
@@ -127,4 +127,26 @@ test("Properties panel (Cmd+I) displays metadata", async ({ page }) => {
 test("Favorites pinning persists in Sidebar", async ({ page }) => {
   await page.getByTitle("Pin current folder").click();
   await expect(page.locator("div").filter({ hasText: /^Users$/ }).first()).toBeVisible();
+});
+
+test("New Folder (Cmd+Shift+N) and Inline Rename (F2) work", async ({ page }) => {
+  await page.getByTitle("New Folder (⌘⇧N)").click();
+  const folderInput = page.locator("input").nth(1);
+  await folderInput.fill("Projects");
+  await folderInput.press("Enter");
+  await expect(page.locator('[data-file-path="/Users/Projects"]')).toBeVisible();
+
+  await page.locator('[data-file-path="/Users/Projects"]').click();
+  const pane = page.locator('[tabindex="0"]').first();
+  await pane.press("F2");
+  const renameInput = page.locator('[data-file-path="/Users/Projects"] input');
+  await renameInput.fill("MyProjects");
+  await renameInput.press("Enter");
+  await expect(page.locator('[data-file-path="/Users/MyProjects"]')).toBeVisible();
+});
+
+test("New Window button invokes create_new_window", async ({ page }) => {
+  await page.getByTitle("New Window (⌘N)").click();
+  const calls = await page.evaluate(() => window.__TAURI_CALLS__);
+  expect(calls.some((c) => c.cmd === "create_new_window")).toBe(true);
 });

@@ -1,8 +1,17 @@
 import { createSignal, createEffect, createMemo, Show } from "solid-js";
-import { listDir, openFile as tauriOpenFile, copyFiles as tauriCopyFiles, moveFiles as tauriMoveFiles, deleteFiles as tauriDeleteFiles, renameFile as tauriRenameFile } from "../../lib/tauri";
-import { navigateTo, setSelection } from "../../stores/windowStore";
+import {
+  listDir,
+  openFile as tauriOpenFile,
+  copyFiles as tauriCopyFiles,
+  moveFiles as tauriMoveFiles,
+  deleteFiles as tauriDeleteFiles,
+  renameFile as tauriRenameFile,
+  createDir as tauriCreateDir,
+  getFileMetadata,
+} from "../../lib/tauri";
+import { windowStore, navigateTo, setSelection } from "../../stores/windowStore";
 import { addRecent } from "../../stores/bookmarkStore";
-import { clipboardStore, copyFiles, cutFiles, clearClipboard } from "../../stores/clipboardStore";
+import { clipboardStore, copyFiles, cutFiles, clearClipboard, syncClipboardFromBackend } from "../../stores/clipboardStore";
 import FileList from "../FileView/FileList";
 import FileGrid from "../FileView/FileGrid";
 import ContextMenu from "../ContextMenu/ContextMenu";
@@ -19,6 +28,10 @@ export default function FilePane(props) {
   const [propsFile, setPropsFile] = createSignal(null);
   const [conflict, setConflict] = createSignal(null);
   const [focusIdx, setFocusIdx] = createSignal(-1);
+  const [renamingPath, setRenamingPath] = createSignal(null);
+  const [creatingFolder, setCreatingFolder] = createSignal(false);
+  const [newFolderName, setNewFolderName] = createSignal("Untitled Folder");
+  const [dragOver, setDragOver] = createSignal(false);
 
   function refresh() {
     if (!pane().path) return;
@@ -45,6 +58,10 @@ export default function FilePane(props) {
           if (f) setPropsFile(f);
         }
       };
+      window.__feNewFolder = () => {
+        setNewFolderName("Untitled Folder");
+        setCreatingFolder(true);
+      };
     }
   });
 
@@ -53,6 +70,11 @@ export default function FilePane(props) {
     if (!path) return;
     addRecent(path);
     refresh();
+  });
+
+  const visibleFiles = createMemo(() => {
+    const list = files();
+    return windowStore.showHidden ? list : list.filter((f) => !f.is_hidden);
   });
 
   function openEntry(file) {
@@ -70,10 +92,8 @@ export default function FilePane(props) {
     navigateTo(pane().id, parts.join("/") || "/");
   }
 
-  async function pasteHere() {
-    const sources = clipboardStore.paths;
+  async function pasteSources(sources, isCut) {
     if (!sources.length) return;
-    const isCut = clipboardStore.isCut;
     const existingMap = new Map(files().map((f) => [f.name, f]));
 
     const nonConflicting = [];
@@ -81,7 +101,12 @@ export default function FilePane(props) {
     for (const src of sources) {
       const name = src.split("/").filter(Boolean).pop();
       if (existingMap.has(name)) {
-        conflicts.push({ src, existing: existingMap.get(name), incoming: { name, path: src, size: 0, modified: 0 } });
+        let incomingMeta = { name, path: src, size: 0, modified: 0 };
+        try {
+          const m = await getFileMetadata(src);
+          incomingMeta = { name: m.name, path: m.path, size: m.size, modified: m.modified };
+        } catch {}
+        conflicts.push({ src, existing: existingMap.get(name), incoming: incomingMeta });
       } else {
         nonConflicting.push(src);
       }
@@ -137,11 +162,64 @@ export default function FilePane(props) {
     refresh();
   }
 
+  async function pasteHere() {
+    await syncClipboardFromBackend();
+    await pasteSources(clipboardStore.paths, clipboardStore.isCut);
+  }
+
+  async function commitRename(file, newName) {
+    setRenamingPath(null);
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === file.name) return;
+    try {
+      await tauriRenameFile(file.path, trimmed);
+      refresh();
+    } catch (e) { console.error(e); }
+  }
+
+  async function commitNewFolder() {
+    const name = newFolderName().trim();
+    setCreatingFolder(false);
+    if (!name) return;
+    const base = pane().path === "/" ? "" : pane().path.replace(/\/$/, "");
+    try {
+      await tauriCreateDir(`${base}/${name}`);
+      refresh();
+    } catch (e) { console.error(e); }
+  }
+
+  function handleDragOver(e) {
+    if (e.dataTransfer?.types?.includes("application/x-fe-paths")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = e.altKey ? "copy" : "move";
+      setDragOver(true);
+    }
+  }
+
+  async function handleDrop(e) {
+    setDragOver(false);
+    const raw = e.dataTransfer?.getData("application/x-fe-paths");
+    if (!raw) return;
+    e.preventDefault();
+    try {
+      const { paths, sourcePaneId } = JSON.parse(raw);
+      if (!paths?.length) return;
+      if (sourcePaneId === pane().id && !e.altKey) return;
+      await pasteSources(paths, !e.altKey);
+    } catch (err) { console.error(err); }
+  }
+
   function handleKeyDown(e) {
     if (!isActive()) return;
-    if (e.metaKey && e.key.toLowerCase() === "a") {
+    if (e.key === "F2") {
+      const sel = pane().selected;
+      if (sel?.length === 1) {
+        e.preventDefault();
+        setRenamingPath(sel[0]);
+      }
+    } else if (e.metaKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
-      setSelection(pane().id, files().map((f) => f.path));
+      setSelection(pane().id, visibleFiles().map((f) => f.path));
     } else if (e.metaKey && e.key.toLowerCase() === "c") {
       if (pane().selected?.length) { e.preventDefault(); copyFiles(pane().selected); }
     } else if (e.metaKey && e.key.toLowerCase() === "x") {
@@ -156,12 +234,12 @@ export default function FilePane(props) {
       }
     } else if (e.key === "ArrowDown") {
       e.preventDefault();
-      setFocusIdx((i) => Math.min(i + 1, files().length - 1));
+      setFocusIdx((i) => Math.min(i + 1, visibleFiles().length - 1));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setFocusIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter") {
-      const f = files()[focusIdx()];
+      const f = visibleFiles()[focusIdx()];
       if (f) openEntry(f);
     } else if (e.key === "Backspace") {
       goUp();
@@ -175,15 +253,38 @@ export default function FilePane(props) {
 
   const cutPaths = createMemo(() => (clipboardStore.isCut ? clipboardStore.paths : []));
   const selectedCount = createMemo(() => pane().selected?.length || 0);
-  const totalCount = createMemo(() => files().length);
+  const totalCount = createMemo(() => visibleFiles().length);
 
   return (
     <div
       class="flex flex-col h-full outline-none"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      style={`background:var(--bg); ${isActive() ? "box-shadow: inset 0 1px 0 0 var(--accent);" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
+      style={`background:var(--bg); ${dragOver() ? "outline:2px dashed var(--accent); outline-offset:-2px;" : isActive() ? "box-shadow: inset 0 1px 0 0 var(--accent);" : ""}`}
     >
+      {/* Inline New Folder bar */}
+      <Show when={creatingFolder()}>
+        <div class="flex items-center gap-2 px-3 py-1.5 shrink-0" style="background:var(--panel); border-bottom:1px solid var(--border)">
+          <span class="text-xs" style="color:var(--muted)">New Folder:</span>
+          <input
+            class="flex-1 px-2 py-0.5 text-xs"
+            value={newFolderName()}
+            onInput={(e) => setNewFolderName(e.target.value)}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === "Enter") commitNewFolder();
+              if (e.key === "Escape") setCreatingFolder(false);
+            }}
+            ref={(el) => setTimeout(() => { el?.focus(); el?.select(); }, 0)}
+          />
+          <button class="px-2 py-0.5 rounded text-xs" style="background:var(--accent); color:#fff" onClick={commitNewFolder}>Create</button>
+          <button class="px-2 py-0.5 rounded text-xs" style="color:var(--muted)" onClick={() => setCreatingFolder(false)}>Cancel</button>
+        </div>
+      </Show>
+
       {/* File content area */}
       <div class="flex-1 overflow-hidden relative">
         <Show when={loading()}>
@@ -202,7 +303,8 @@ export default function FilePane(props) {
             when={pane().viewMode !== "grid"}
             fallback={
               <FileGrid
-                files={files()}
+                files={visibleFiles()}
+                paneId={pane().id}
                 selected={pane().selected}
                 cutPaths={cutPaths()}
                 onOpen={openEntry}
@@ -212,14 +314,18 @@ export default function FilePane(props) {
             }
           >
             <FileList
-              files={files()}
+              files={visibleFiles()}
+              paneId={pane().id}
               selected={pane().selected}
               cutPaths={cutPaths()}
               focusIdx={focusIdx()}
+              renamingPath={renamingPath()}
               onOpen={openEntry}
               onSelect={(paths) => setSelection(pane().id, paths)}
               onFocusIdx={setFocusIdx}
               onContextMenu={handleContextMenu}
+              onCommitRename={commitRename}
+              onCancelRename={() => setRenamingPath(null)}
             />
           </Show>
         </Show>
@@ -243,12 +349,13 @@ export default function FilePane(props) {
           pane={pane()}
           onClose={() => { setContextMenu(null); refresh(); }}
           onOpenProps={(f) => setPropsFile(f)}
+          onRename={(f) => setRenamingPath(f.path)}
         />
       </Show>
 
       {/* Properties panel */}
       <Show when={propsFile()}>
-        <PropertiesPanel file={propsFile()} onClose={() => setPropsFile(null)} />
+        <PropertiesPanel file={propsFile()} onClose={() => setPropsFile(null)} onRefresh={refresh} />
       </Show>
 
       {/* Conflict dialog */}

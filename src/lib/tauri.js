@@ -16,3 +16,5 @@ export const uncompressArchive = (path, dest) => invoke("uncompress_archive", { 
 export const shareViaImessage = (path) => invoke("share_via_imessage", { path });
 export const openFile = (path) => invoke("open_file", { path });
 export const openInTerminal = (path) => invoke("open_in_terminal", { path });
+export const getHomeDir = () => invoke("get_home_dir");
+export const createNewWindow = (path = null) => invoke("create_new_window", { path });

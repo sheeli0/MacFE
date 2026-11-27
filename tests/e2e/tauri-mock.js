@@ -134,6 +134,20 @@ export function installTauriMock() {
           }
           return results.slice(0, args.maxResults || 200);
         }
+        case "create_dir": {
+          const parent = parentOf(args.path);
+          const name = basenameOf(args.path);
+          const list = fsTree[parent] || (fsTree[parent] = []);
+          list.push({ name, path: args.path, is_dir: true, size: 0, modified: Date.now(), created: Date.now(), extension: null, is_hidden: name.startsWith("."), permissions: "rwxr-xr-x" });
+          fsTree[args.path] = [];
+          return null;
+        }
+        case "create_new_window":
+        case "set_clipboard":
+        case "clear_clipboard":
+          return null;
+        case "get_clipboard":
+          return { paths: [], is_cut: false };
         case "compress_to_zip":
           return `${args.paths[0]}.zip`;
         case "share_via_imessage":
