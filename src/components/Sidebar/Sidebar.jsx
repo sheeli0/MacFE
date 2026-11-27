@@ -1,5 +1,5 @@
-import { For, createMemo } from "solid-js";
-import { Folder, Clock, Plus, X, HardDrive, Home } from "lucide-solid";
+import { For, createMemo, createSignal } from "solid-js";
+import { Folder, Clock, Plus, X, HardDrive, Home, Search } from "lucide-solid";
 import { bookmarkStore, addFavorite, removeFavorite, clearRecent } from "../../stores/bookmarkStore";
 import { windowStore, navigateTo } from "../../stores/windowStore";
 
@@ -10,6 +10,7 @@ const LOCATIONS = [
 ];
 
 export default function Sidebar() {
+  const [filter, setFilter] = createSignal("");
   const activePane = createMemo(() => windowStore.panes[windowStore.activePane]);
   const currentPath = createMemo(() => activePane()?.path);
 
@@ -23,13 +24,48 @@ export default function Sidebar() {
     if (p) addFavorite(p.path);
   }
 
-  const recentSlice = createMemo(() => bookmarkStore.recent.slice(0, 10));
+  const filteredFavorites = createMemo(() => {
+    const q = filter().trim().toLowerCase();
+    if (!q) return bookmarkStore.favorites;
+    return bookmarkStore.favorites.filter(
+      (f) => f.name.toLowerCase().includes(q) || f.path.toLowerCase().includes(q)
+    );
+  });
+
+  const recentSlice = createMemo(() => {
+    const q = filter().trim().toLowerCase();
+    const list = bookmarkStore.recent.slice(0, 20);
+    if (!q) return list.slice(0, 10);
+    return list.filter((p) => p.toLowerCase().includes(q)).slice(0, 10);
+  });
 
   return (
     <div
       class="flex flex-col shrink-0 overflow-y-auto py-2"
       style="width:210px; background:var(--panel-alt); border-right:1px solid var(--border)"
     >
+      {/* Quick-jump filter */}
+      <div class="px-2.5 pb-2">
+        <div
+          class="flex items-center gap-1.5 px-2 rounded-md"
+          style="height:26px; background:var(--bg); border:1px solid var(--border)"
+        >
+          <Search size={12} class="shrink-0" style="color:var(--muted)" />
+          <input
+            class="w-full bg-transparent border-none outline-none text-[12px]"
+            style="color:var(--text)"
+            placeholder="Filter bookmarks…"
+            value={filter()}
+            onInput={(e) => setFilter(e.target.value)}
+          />
+          {filter() && (
+            <button class="fe-icon-btn w-4 h-4" onClick={() => setFilter("")}>
+              <X size={10} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Locations */}
       <div class="px-3 pt-1 pb-1">
         <span class="text-[11px] font-semibold uppercase tracking-wider" style="color:var(--muted)">
@@ -62,7 +98,7 @@ export default function Sidebar() {
           <Plus size={12} />
         </button>
       </div>
-      <For each={bookmarkStore.favorites}>
+      <For each={filteredFavorites()}>
         {(fav) => {
           const active = () => currentPath() === fav.path;
           return (

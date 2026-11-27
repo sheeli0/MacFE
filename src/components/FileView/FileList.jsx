@@ -24,6 +24,7 @@ function formatDate(ms) {
 export default function FileList(props) {
   const [sortKey, setSortKey] = createSignal("name");
   const [sortAsc, setSortAsc] = createSignal(true);
+  const [renameVal, setRenameVal] = createSignal("");
   let listRef;
 
   const sorted = createMemo(() => {
@@ -69,6 +70,13 @@ export default function FileList(props) {
     }
   }
 
+  function handleDragStart(e, file) {
+    const selected = props.selected || [];
+    const paths = selected.includes(file.path) ? selected : [file.path];
+    e.dataTransfer.setData("application/x-fe-paths", JSON.stringify({ paths, sourcePaneId: props.paneId }));
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+
   return (
     <div class="flex flex-col h-full overflow-hidden">
       {/* Header */}
@@ -99,18 +107,45 @@ export default function FileList(props) {
             const isSelected = () => (props.selected || []).includes(file.path);
             const isFocused = () => props.focusIdx === i();
             const isCut = () => (props.cutPaths || []).includes(file.path);
+            const isRenaming = () => props.renamingPath === file.path;
             return (
               <div
                 data-file-path={file.path}
+                draggable={isSelected() && !isRenaming() && !marquee()}
+                onDragStart={(e) => handleDragStart(e, file)}
                 class={`flex items-center cursor-pointer transition-colors text-[13px] mx-1 rounded px-0.5 fe-row ${isSelected() ? "fe-row-selected" : ""}`}
                 style={`height:28px; ${isFocused() && !isSelected() ? "background:var(--panel);" : ""} color:var(--text); opacity:${isCut() ? 0.45 : 1}`}
                 onClick={(e) => handleClick(e, file, i())}
-                onDblClick={() => props.onOpen?.(file)}
+                onDblClick={() => !isRenaming() && props.onOpen?.(file)}
                 onContextMenu={(e) => props.onContextMenu?.(e, file)}
               >
                 <div class="flex items-center gap-2.5 px-2 min-w-0" style="flex:3">
                   <FileIcon file={file} size={15} />
-                  <span class="truncate">{file.name}</span>
+                  <Show
+                    when={isRenaming()}
+                    fallback={<span class="truncate">{file.name}</span>}
+                  >
+                    <input
+                      class="flex-1 px-1.5 py-0.5 text-[12px]"
+                      value={renameVal() || file.name}
+                      onInput={(e) => setRenameVal(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === "Enter") {
+                          props.onCommitRename?.(file, renameVal() || file.name);
+                          setRenameVal("");
+                        } else if (e.key === "Escape") {
+                          props.onCancelRename?.();
+                          setRenameVal("");
+                        }
+                      }}
+                      onBlur={() => {
+                        props.onCancelRename?.();
+                        setRenameVal("");
+                      }}
+                      ref={(el) => setTimeout(() => { el?.focus(); el?.select(); }, 0)}
+                    />
+                  </Show>
                 </div>
                 <div class="px-2.5 truncate text-[12px]" style="flex:1;color:var(--muted)">{formatSize(file.size, file.is_dir)}</div>
                 <div class="px-2.5 truncate text-[12px]" style="flex:2;color:var(--muted)">{formatDate(file.modified)}</div>

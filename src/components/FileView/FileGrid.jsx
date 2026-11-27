@@ -31,6 +31,13 @@ export default function FileGrid(props) {
     }
   }
 
+  function handleDragStart(e, file) {
+    const selected = props.selected || [];
+    const paths = selected.includes(file.path) ? selected : [file.path];
+    e.dataTransfer.setData("application/x-fe-paths", JSON.stringify({ paths, sourcePaneId: props.paneId }));
+    e.dataTransfer.effectAllowed = "copyMove";
+  }
+
   return (
     <div
       ref={gridRef}
@@ -45,6 +52,8 @@ export default function FileGrid(props) {
           return (
             <div
               data-file-path={file.path}
+              draggable={isSelected() && !marquee()}
+              onDragStart={(e) => handleDragStart(e, file)}
               class={`flex flex-col items-center gap-1.5 p-2 rounded-md cursor-pointer transition-colors fe-row ${isSelected() ? "fe-row-selected" : ""}`}
               style={`color:var(--text); opacity:${isCut() ? 0.45 : 1}`}
               onClick={(e) => handleClick(e, file, i())}

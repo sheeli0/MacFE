@@ -98,9 +98,26 @@ fn entry_from_path(p: &Path) -> Result<FileEntry, String> {
     })
 }
 
+fn expand_tilde(path: &str) -> PathBuf {
+    if path == "~" || path.starts_with("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            if path == "~" {
+                return PathBuf::from(home);
+            }
+            return PathBuf::from(home).join(&path[2..]);
+        }
+    }
+    PathBuf::from(path)
+}
+
+#[tauri::command]
+pub fn get_home_dir() -> Result<String, String> {
+    std::env::var("HOME").map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn list_dir(path: String) -> Result<Vec<FileEntry>, String> {
-    let dir = Path::new(&path);
+    let dir = expand_tilde(&path);
     if !dir.is_dir() {
         return Err(format!("Not a directory: {}", path));
     }
@@ -175,10 +192,12 @@ pub fn move_files(sources: Vec<String>, dest: String) -> Result<(), String> {
 pub fn delete_files(paths: Vec<String>) -> Result<(), String> {
     for p in &paths {
         let path = Path::new(p);
-        if path.is_dir() {
-            fs::remove_dir_all(path).map_err(|e| format!("Failed to delete {}: {}", p, e))?;
-        } else {
-            fs::remove_file(path).map_err(|e| format!("Failed to delete {}: {}", p, e))?;
+        if trash::delete(path).is_err() {
+            if path.is_dir() {
+                fs::remove_dir_all(path).map_err(|e| format!("Failed to delete {}: {}", p, e))?;
+            } else {
+                fs::remove_file(path).map_err(|e| format!("Failed to delete {}: {}", p, e))?;
+            }
         }
     }
     Ok(())

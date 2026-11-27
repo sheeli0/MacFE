@@ -1,9 +1,10 @@
 import { createMemo } from "solid-js";
-import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid } from "lucide-solid";
-import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane, setViewMode } from "../../stores/windowStore";
+import { ChevronLeft, ChevronRight, ChevronUp, Search, Plus, Minus, List, Grid, AppWindow, Eye, EyeOff, FolderPlus } from "lucide-solid";
+import { windowStore, navigateBack, navigateForward, navigateTo, addPane, removePane, setViewMode, toggleHiddenFiles } from "../../stores/windowStore";
+import { createNewWindow } from "../../lib/tauri";
 import PathBar from "./PathBar";
 
-export default function Toolbar({ onSearch }) {
+export default function Toolbar(props) {
   const activePane = createMemo(() => windowStore.panes[windowStore.activePane]);
 
   const canGoBack = createMemo(() => {
@@ -84,19 +85,46 @@ export default function Toolbar({ onSearch }) {
         <Grid size={15} />
       </button>
 
+      {/* Hidden files toggle */}
+      <button
+        class={`fe-icon-btn ${windowStore.showHidden ? "active" : ""}`}
+        onClick={toggleHiddenFiles}
+        title="Toggle Hidden Files (⌘⇧.)"
+      >
+        {windowStore.showHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+      </button>
+
+      {/* New folder */}
+      <button
+        class="fe-icon-btn"
+        onClick={() => window.__feNewFolder?.()}
+        title="New Folder (⌘⇧N)"
+      >
+        <FolderPlus size={15} />
+      </button>
+
       <div class="w-px h-5 mx-1" style="background:var(--border)" />
 
       {/* Search */}
-      <button class="fe-icon-btn" onClick={onSearch} title="Search (⌘F)">
+      <button class="fe-icon-btn" onClick={props.onSearch} title="Search (⌘F)">
         <Search size={16} />
       </button>
 
       {/* Add/Remove Pane */}
-      <button class="fe-icon-btn" onClick={addPane} title="Add Pane (⌘N)">
+      <button class="fe-icon-btn" onClick={addPane} title="Add Pane (⌘⇧P)">
         <Plus size={16} />
       </button>
       <button class="fe-icon-btn" disabled={!canRemove()} onClick={handleRemovePane} title="Remove Pane">
         <Minus size={16} />
+      </button>
+
+      {/* New OS Window */}
+      <button
+        class="fe-icon-btn"
+        onClick={() => createNewWindow(activePane()?.path || "/Users").catch(() => addPane())}
+        title="New Window (⌘N)"
+      >
+        <AppWindow size={15} />
       </button>
     </div>
   );

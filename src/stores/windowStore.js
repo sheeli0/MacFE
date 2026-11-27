@@ -2,16 +2,30 @@ import { createStore } from "solid-js/store";
 
 let nextId = 1;
 
-function makePane(path = "/") {
+function getInitialPath() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("path") || "/Users";
+  } catch {
+    return "/Users";
+  }
+}
+
+function makePane(path = "/Users") {
   return { id: nextId++, path, history: [path], historyIdx: 0, selected: [], viewMode: "list" };
 }
 
 const [windowStore, setWindowStore] = createStore({
-  panes: [makePane("/Users")],
+  panes: [makePane(getInitialPath())],
   activePane: 0,
+  showHidden: false,
 });
 
 export { windowStore };
+
+export function toggleHiddenFiles() {
+  setWindowStore("showHidden", (v) => !v);
+}
 
 export function addPane() {
   const active = windowStore.panes[windowStore.activePane];
