@@ -18,3 +18,5 @@ export const openFile = (path) => invoke("open_file", { path });
 export const openInTerminal = (path) => invoke("open_in_terminal", { path });
 export const getHomeDir = () => invoke("get_home_dir");
 export const createNewWindow = (path = null) => invoke("create_new_window", { path });
+export const readFilePreview = (path, maxBytes = 65536) => invoke("read_file_preview", { path, maxBytes });
+export const getGitBranch = (path) => invoke("get_git_branch", { path });

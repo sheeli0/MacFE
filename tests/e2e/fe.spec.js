@@ -150,3 +150,10 @@ test("New Window button invokes create_new_window", async ({ page }) => {
   const calls = await page.evaluate(() => window.__TAURI_CALLS__);
   expect(calls.some((c) => c.cmd === "create_new_window")).toBe(true);
 });
+
+test("Preview Pane toggles and shows file preview + git badge", async ({ page }) => {
+  await expect(page.getByText("git: main")).toBeVisible();
+  await page.locator('[data-file-path="/Users/notes.txt"]').click();
+  await page.getByTitle("Toggle Preview Pane").click();
+  await expect(page.getByText("Hello from sandboxed preview!")).toBeVisible();
+});

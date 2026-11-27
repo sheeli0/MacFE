@@ -8,6 +8,7 @@ import {
   renameFile as tauriRenameFile,
   createDir as tauriCreateDir,
   getFileMetadata,
+  getGitBranch,
 } from "../../lib/tauri";
 import { windowStore, navigateTo, setSelection } from "../../stores/windowStore";
 import { addRecent } from "../../stores/bookmarkStore";
@@ -32,11 +33,13 @@ export default function FilePane(props) {
   const [creatingFolder, setCreatingFolder] = createSignal(false);
   const [newFolderName, setNewFolderName] = createSignal("Untitled Folder");
   const [dragOver, setDragOver] = createSignal(false);
+  const [gitBranch, setGitBranch] = createSignal(null);
 
   function refresh() {
     if (!pane().path) return;
     setLoading(true);
     setError(null);
+    getGitBranch(pane().path).then(setGitBranch).catch(() => setGitBranch(null));
     listDir(pane().path)
       .then((entries) => {
         setFiles(entries || []);
@@ -336,7 +339,14 @@ export default function FilePane(props) {
         class="flex items-center justify-between px-3 shrink-0 text-[11px]"
         style="height:24px; border-top:1px solid var(--border); color:var(--muted); background:var(--panel)"
       >
-        <span>{totalCount()} items</span>
+        <div class="flex items-center gap-2">
+          <span>{totalCount()} items</span>
+          <Show when={gitBranch()}>
+            <span class="px-1.5 py-0.2 rounded text-[10px]" style="background:var(--bg); color:var(--accent); border:1px solid var(--border)">
+              git: {gitBranch()}
+            </span>
+          </Show>
+        </div>
         <span>{selectedCount() > 0 ? `${selectedCount()} selected` : ""}</span>
       </div>
 
